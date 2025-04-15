@@ -1,5 +1,30 @@
 # 🦙 LocalRAG — локальный RAG по PDF и другим документам
 
+<div align="center">
+<table border="0" >
+<tr>
+    <td width="120px" valign="top"><img src="assets/LocalRAG-logo-s.png" width="105px" alt="LocalRAG" style="border-radius: 8px;"></td>
+    <td>
+        <div>
+            <p>
+                <a href='https://github.com/Sergey360/LocalRAG'><img src='https://img.shields.io/badge/GitHub-Repo-blue'></a>
+                <a href='https://ollama.com'><img src='https://img.shields.io/badge/Ollama-LLM-red'></a>
+                <a href='https://github.com/Mintplex-Labs/anything-llm'><img src='https://img.shields.io/badge/AnythingLLM-RAG-lightgrey'></a>
+            </p>
+            <p>
+                <img src='https://img.shields.io/github/stars/Sergey360/LocalRAG?style=social' />
+                <img src="https://img.shields.io/badge/python-3.11-blue">
+            </p>
+            <p>
+                <img src="https://img.shields.io/badge/license-MIT-green">
+                <img src="https://img.shields.io/badge/OS-Windows/Linux-lightblue">
+            </p>
+        </div>
+    </td>
+</tr>
+</table>
+</div>
+
 **LocalRAG** — это автономная система Retrieval-Augmented Generation (RAG), которая работает полностью локально на собственном ПК. Объединяет использование [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm), [Ollama](https://ollama.com), и небольшой Watcher, который автоматически переиндексирует документы при изменениях.
 
 ## 🚀 Возможности
