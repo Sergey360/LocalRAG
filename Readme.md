@@ -2,9 +2,9 @@
 
 <div align="center">
 <table border="0" >
-<tr>
-    <td width="120px" valign="top"><img src="assets/LocalRAG-logo-s.png" width="105px" alt="LocalRAG" style="border-radius: 8px;"></td>
-    <td>
+<tr border="0">
+    <td width="130px" valign="top" border="0"><img src="assets/LocalRAG-logo-s.png" width="105px" alt="LocalRAG" style="border-radius: 8px;"></td>
+    <td border="0">
         <div>
             <p>
                 <a href='https://github.com/Sergey360/LocalRAG'><img src='https://img.shields.io/badge/GitHub-Repo-blue'></a>
