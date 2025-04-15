@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    command: >
+      sh -c "ollama serve & sleep 3 && ollama pull ${OLLAMA_MODEL} && tail -f /dev/null"
+    environment:
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+    deploy:
+      resources:
+        limits:
+          memory: 12g
+
+  anythingllm:
+    image: mintplexlabs/anythingllm:latest
+    ports:
+      - "3001:3001"
+    environment:
+      - DEFAULT_FILES_PATH=/app/files
+      - OLLAMA_BASE_PATH=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+    volumes:
+      - ${PDF_PATH}:/app/files
+      - anythingllm_storage:/app/server/storage
+    depends_on:
+      - ollama
+
+  rag-watcher:
+    image: python:3.11
+    working_dir: /app
+    volumes:
+      - .:/app
+      - ${PDF_PATH}:/app/files
+    command: >
+      sh -c "pip install -r requirements.txt && python watcher.py"
+    environment:
+      - WATCH_PATH=/app/files
+      - WORKSPACE_ID=${WORKSPACE_ID}
+      - ANYTHINGLLM_API=http://host.docker.internal:3001/api/workspaces/${WORKSPACE_ID}/reindex
+
+volumes:
+  ollama_data:
+  anythingllm_storage:
+
