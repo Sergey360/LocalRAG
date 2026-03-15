@@ -1,45 +1,82 @@
-version: "3.8"
-
 services:
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:${OLLAMA_TAG:-0.17.7}
+    restart: unless-stopped
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    entrypoint: /bin/bash
-    command: -c "ollama serve & sleep 3 && ollama pull ${OLLAMA_MODEL} && tail -f /dev/null"
+    entrypoint:
+      - /bin/sh
+      - -lc
+    command:
+      - |
+        ollama serve &
+        OLLAMA_PID=$$!;
+        sleep 3;
+        ollama pull "${LLM_MODEL:-qwen3.5:9b}";
+        wait $$OLLAMA_PID
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     environment:
-      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - LLM_MODEL=${LLM_MODEL:-qwen3.5:9b}
+      - OLLAMA_MODEL=${LLM_MODEL:-qwen3.5:9b}
 
-  anythingllm:
-    image: mintplexlabs/anythingllm:latest
-    ports:
-      - "3001:3001"
-    environment:
-      - DEFAULT_FILES_PATH=/app/files
-      - OLLAMA_BASE_PATH=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL}
+  localrag-app:
+    image: localrag-app
+    container_name: localrag-app
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     volumes:
-      - ${PDF_PATH}:/app/files
-      - anythingllm_storage:/app/server/storage
+      - type: bind
+        source: ./vectorstore
+        target: /app/vectorstore
+      - type: bind
+        source: ./hf_cache
+        target: /app/hf_cache
+      - type: bind
+        source: ${HOST_FS_ROOT:-C:/}
+        target: /hostfs/c
+    ports:
+      - "7860:7860"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:7860/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - DOCS_PATH=${DOCS_PATH:-/hostfs/c/Temp/PDF}
+      - PDF_PATH=${DOCS_PATH:-/hostfs/c/Temp/PDF}
+      - HOST_DOCS_PATH=${HOST_DOCS_PATH:-C:/Temp/PDF}
+      - HOST_FS_ROOT=${HOST_FS_ROOT:-C:/}
+      - HOST_FS_MOUNT=/hostfs/c
+      - HF_HOME=/app/hf_cache
+      - APP_VERSION=${APP_VERSION:-0.9.0}
+      - LLM_MODEL=${LLM_MODEL:-qwen3.5:9b}
+      - MODEL_NAME=${LLM_MODEL:-qwen3.5:9b}
+      - EMBED_MODEL=${EMBED_MODEL:-intfloat/multilingual-e5-large}
+      - EMBEDDINGS_MODEL_NAME=${EMBED_MODEL:-intfloat/multilingual-e5-large}
     depends_on:
       - ollama
 
-  rag-watcher:
-    image: python:3.11
-    working_dir: /app
-    volumes:
-      - .:/app
-      - ${PDF_PATH}:/app/files
-    command: >
-      sh -c "pip install -r requirements.txt && python watcher.py"
-    environment:
-      - WATCH_PATH=/app/files
-      - WORKSPACE_ID=${WORKSPACE_ID}
-      - ANYTHINGLLM_API=http://host.docker.internal:3001/api/workspaces/${WORKSPACE_ID}/reindex
-
 volumes:
   ollama_data:
-  anythingllm_storage:
-

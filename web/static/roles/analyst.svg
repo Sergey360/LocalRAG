@@ -1,0 +1,33 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Analyst</title>
+  <desc id="desc">Fantasy seer analyst with map, crystal lens and arcane notes</desc>
+  <defs>
+    <linearGradient id="bg-analyst" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#241529"/>
+      <stop offset="55%" stop-color="#14324f"/>
+      <stop offset="100%" stop-color="#5f4c2f"/>
+    </linearGradient>
+    <linearGradient id="robe-analyst" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#355f9f"/>
+      <stop offset="100%" stop-color="#1f3354"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-analyst)"/>
+  <circle cx="62" cy="48" r="26" fill="#f6d67d" opacity="0.22"/>
+  <circle cx="264" cy="44" r="18" fill="#9dd8ff" opacity="0.18"/>
+  <rect x="26" y="28" width="122" height="84" rx="12" fill="#efe2bc" stroke="#c7a85b" stroke-width="3"/>
+  <path d="M42 96 C70 82 80 82 104 92 C118 98 126 98 138 92" fill="none" stroke="#7b5a24" stroke-width="4" stroke-linecap="round"/>
+  <path d="M44 58 L68 70 L96 50 L122 64" fill="none" stroke="#355f9f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="234" cy="76" r="30" fill="#d9f2ff" opacity="0.88" stroke="#8bc2ec" stroke-width="4"/>
+  <circle cx="234" cy="76" r="17" fill="#8cd7ff" opacity="0.48"/>
+  <path d="M224 104 L204 126" stroke="#d7b15d" stroke-width="7" stroke-linecap="round"/>
+  <path d="M196 132 L224 104" stroke="#7f5a28" stroke-width="3" stroke-linecap="round"/>
+  <path d="M130 194 C136 154 146 122 160 106 C174 90 190 86 208 90 C224 94 238 108 244 128 C250 148 248 172 242 194 Z" fill="url(#robe-analyst)"/>
+  <path d="M154 108 C156 88 170 72 188 72 C206 72 220 88 222 108 C208 122 168 122 154 108 Z" fill="#26334f"/>
+  <circle cx="188" cy="110" r="28" fill="#f3c98b"/>
+  <path d="M160 102 C168 82 178 74 188 74 C198 74 208 82 216 102 C206 92 170 92 160 102 Z" fill="#c7a85b"/>
+  <circle cx="178" cy="112" r="4" fill="#231911"/>
+  <circle cx="198" cy="112" r="4" fill="#231911"/>
+  <path d="M176 126 Q188 134 200 126" fill="none" stroke="#3b2a1c" stroke-width="3" stroke-linecap="round"/>
+  <path d="M136 188 C154 172 168 166 184 166 C202 166 216 172 236 188" fill="none" stroke="#b9d4ff" stroke-width="3" opacity="0.5"/>
+</svg>

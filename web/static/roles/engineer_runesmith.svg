@@ -1,0 +1,32 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Engineer Runesmith</title>
+  <desc id="desc">Fantasy runesmith engineer forging glowing sigils on an anvil</desc>
+  <defs>
+    <linearGradient id="bg-runesmith" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#231511"/>
+      <stop offset="52%" stop-color="#4b2c1d"/>
+      <stop offset="100%" stop-color="#6b5a28"/>
+    </linearGradient>
+    <linearGradient id="coat-runesmith" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7a5b36"/>
+      <stop offset="100%" stop-color="#34261b"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-runesmith)"/>
+  <rect x="28" y="30" width="130" height="94" rx="14" fill="#1d1a19" stroke="#c79348" stroke-width="3"/>
+  <path d="M52 98 H136 L126 70 H62 Z" fill="#5d6670"/>
+  <rect x="82" y="98" width="24" height="20" rx="4" fill="#424b55"/>
+  <path d="M60 64 L130 64" stroke="#f3cc7b" stroke-width="4" stroke-linecap="round" opacity="0.65"/>
+  <path d="M76 80 L92 64 L108 80 L124 64" fill="none" stroke="#4ec8ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="246" cy="70" r="26" fill="#ffcc67" opacity="0.18"/>
+  <path d="M232 56 L260 84 M260 56 L232 84" stroke="#ffd97f" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+  <path d="M130 194 C136 158 148 132 162 114 C176 96 194 94 210 100 C226 106 238 122 244 146 C248 162 248 178 244 194 Z" fill="url(#coat-runesmith)"/>
+  <circle cx="190" cy="112" r="29" fill="#daaa72"/>
+  <path d="M160 104 C168 80 178 68 190 68 C202 68 212 80 220 104 L214 116 L166 116 Z" fill="#77441e"/>
+  <path d="M164 104 H216" stroke="#d7ad57" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="178" cy="112" r="4" fill="#20150d"/>
+  <circle cx="198" cy="112" r="4" fill="#20150d"/>
+  <path d="M176 126 Q190 136 204 126" fill="none" stroke="#362215" stroke-width="3" stroke-linecap="round"/>
+  <path d="M126 166 L150 150" stroke="#d7ad57" stroke-width="8" stroke-linecap="round"/>
+  <rect x="112" y="170" width="16" height="34" rx="7" fill="#7a4a24" transform="rotate(-34 120 187)"/>
+</svg>

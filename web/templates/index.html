@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}" dir="{{ 'rtl' if lang == 'he' else 'ltr' }}">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ t('app_title') }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ static_url('favicon.ico') }}">
+    <link rel="stylesheet" href="{{ static_url('style.css') }}">
+    <script src="{{ static_url('js/htmx.min.js') }}" defer></script>
+    <script src="{{ static_url('js/alert.js') }}" defer></script>
+    <script src="{{ static_url('js/main.js') }}" defer></script>
+</head>
+<body data-loading-message="{{ t('loading_generic') }}" data-response-stale-message="{{ t('response_stale') }}" data-current-lang="{{ lang }}" data-dir="{{ 'rtl' if lang == 'he' else 'ltr' }}"{% if lang == 'he' %} class="rtl"{% endif %}>
+    {% include "main_content.html" %}
+</body>
+</html>

@@ -1,0 +1,29 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Archivist Chronicler</title>
+  <desc id="desc">Fantasy chronicler archivist with quill, scrolls and royal ledger</desc>
+  <defs>
+    <linearGradient id="bg-chronicler" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#231626"/>
+      <stop offset="54%" stop-color="#563765"/>
+      <stop offset="100%" stop-color="#8a6031"/>
+    </linearGradient>
+    <linearGradient id="robe-chronicler" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9e6096"/>
+      <stop offset="100%" stop-color="#4b2b52"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-chronicler)"/>
+  <rect x="28" y="34" width="124" height="88" rx="14" fill="#f3dfbd" stroke="#cfa35a" stroke-width="3"/>
+  <path d="M48 52 H130 M48 72 H130 M48 92 H110" stroke="#9e6f40" stroke-width="4" stroke-linecap="round"/>
+  <path d="M118 46 C132 56 136 74 126 88" fill="none" stroke="#9e6096" stroke-width="4" stroke-linecap="round"/>
+  <path d="M214 58 H264" stroke="#e9c37d" stroke-width="5" stroke-linecap="round"/>
+  <path d="M214 74 H264" stroke="#e9c37d" stroke-width="5" stroke-linecap="round"/>
+  <path d="M250 48 L268 62 L246 74" fill="none" stroke="#f2ddb2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M132 194 C138 158 148 132 162 114 C176 96 194 94 210 100 C226 106 238 122 244 146 C248 162 248 178 244 194 Z" fill="url(#robe-chronicler)"/>
+  <circle cx="190" cy="112" r="29" fill="#e4bc86"/>
+  <path d="M160 104 C166 80 178 68 190 68 C202 68 214 80 220 104 C210 92 172 92 160 104 Z" fill="#f0dca7"/>
+  <circle cx="180" cy="112" r="4" fill="#26170f"/>
+  <circle cx="200" cy="112" r="4" fill="#26170f"/>
+  <path d="M178 126 Q190 136 202 126" fill="none" stroke="#372218" stroke-width="3" stroke-linecap="round"/>
+  <path d="M138 154 C152 148 168 146 184 148" fill="none" stroke="#f3ddb0" stroke-width="3" opacity="0.75"/>
+</svg>

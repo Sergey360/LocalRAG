@@ -1,0 +1,575 @@
+<div id="app"
+     class="app-shell{% if lang == 'he' %} rtl{% endif %}"
+     data-lang="{{ lang }}"
+     data-dir="{{ 'rtl' if lang == 'he' else 'ltr' }}"
+     data-loading-message="{{ t('loading_generic') }}"
+     data-response-stale-message="{{ t('response_stale') }}"
+     data-docs-path-updated-message="{{ t('docs_path_updated') }}"
+     data-docs-path-update-failed-message="{{ t('docs_path_update_failed') }}"
+     data-docs-browser-loading-message="{{ t('docs_browser_loading') }}"
+     data-docs-browser-empty-message="{{ t('docs_browser_empty') }}"
+     data-docs-browser-error-message="{{ t('docs_browser_error') }}"
+     data-docs-invalid-path-message="{{ t('docs_path_update_failed') }}">
+    <div id="alert-block" aria-live="polite"></div>
+    <div id="global-loader" class="loader-bar" hidden aria-hidden="true">
+        <span class="loader-bar-line" aria-hidden="true"></span>
+    </div>
+    <header class="app-header">
+        <div class="app-brand">
+            <img src="{{ static_url('logo.png') }}" alt="LocalRAG" class="app-logo">
+            <div class="app-brand-text">
+                <div class="app-title">{{ t('app_title') }}</div>
+                <div class="app-subtitle">{{ t('app_subtitle') }}</div>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button id="settings-open-btn"
+                    class="settings-gear-btn"
+                    type="button"
+                    aria-label="{{ t('open_settings') }}"
+                    title="{{ t('open_settings') }}"
+                    aria-controls="settings-modal">
+                <span class="settings-gear-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.591 1.066c1.527-.94 3.31.843 2.37 2.37a1.724 1.724 0 0 0 1.066 2.591c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.591c.94 1.527-.843 3.31-2.37 2.37a1.724 1.724 0 0 0-2.591 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.591-1.066c-1.527.94-3.31-.843-2.37-2.37a1.724 1.724 0 0 0-1.066-2.591c-1.756-.426-1.756-2.924 0-3.35A1.724 1.724 0 0 0 5.367 7.753c-.94-1.527.843-3.31 2.37-2.37a1.724 1.724 0 0 0 2.588-1.066Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </span>
+            </button>
+            <nav class="lang-switch" aria-label="{{ t('language_selector') }}">
+                <button class="lang-btn{% if lang == 'en' %} is-active{% endif %}"
+                        aria-pressed="{{ 'true' if lang == 'en' else 'false' }}"
+                        hx-post="/api/lang_switch"
+                        hx-vals='{"lang":"en"}'
+                        hx-target="#app"
+                        hx-swap="outerHTML">
+                    <img src="{{ static_url('flags/gb.svg') }}" alt="EN">
+                    <span>{{ t('language_en') }}</span>
+                </button>
+                <button class="lang-btn{% if lang == 'ru' %} is-active{% endif %}"
+                        aria-pressed="{{ 'true' if lang == 'ru' else 'false' }}"
+                        hx-post="/api/lang_switch"
+                        hx-vals='{"lang":"ru"}'
+                        hx-target="#app"
+                        hx-swap="outerHTML">
+                    <img src="{{ static_url('flags/ru.svg') }}" alt="RU">
+                    <span>{{ t('language_ru') }}</span>
+                </button>
+                <button class="lang-btn{% if lang == 'nl' %} is-active{% endif %}"
+                        aria-pressed="{{ 'true' if lang == 'nl' else 'false' }}"
+                        hx-post="/api/lang_switch"
+                        hx-vals='{"lang":"nl"}'
+                        hx-target="#app"
+                        hx-swap="outerHTML">
+                    <img src="{{ static_url('flags/nl.svg') }}" alt="NL">
+                    <span>{{ t('language_nl') }}</span>
+                </button>
+                <button class="lang-btn{% if lang == 'zh' %} is-active{% endif %}"
+                        aria-pressed="{{ 'true' if lang == 'zh' else 'false' }}"
+                        hx-post="/api/lang_switch"
+                        hx-vals='{"lang":"zh"}'
+                        hx-target="#app"
+                        hx-swap="outerHTML">
+                    <img src="{{ static_url('flags/cn.svg') }}" alt="ZH">
+                    <span>{{ t('language_zh') }}</span>
+                </button>
+                <button class="lang-btn{% if lang == 'he' %} is-active{% endif %}"
+                        aria-pressed="{{ 'true' if lang == 'he' else 'false' }}"
+                        hx-post="/api/lang_switch"
+                        hx-vals='{"lang":"he"}'
+                        hx-target="#app"
+                        hx-swap="outerHTML">
+                    <img src="{{ static_url('flags/il.svg') }}" alt="HE">
+                    <span>{{ t('language_he') }}</span>
+                </button>
+            </nav>
+        </div>
+    </header>
+    <main class="app-main">
+        <section class="card hero">
+            <p class="hero-copy">{{ t('file_info') }}</p>
+        </section>
+
+        <section class="grid two">
+        <section class="card status-card"
+                 id="status-card"
+                 data-status-code="{{ index_status_code|default('loading') }}"
+                 hx-get="/api/status"
+                 hx-trigger="load once, refreshStatus"
+                 hx-target="this"
+                 hx-swap="outerHTML">
+                <div class="status-meta">
+                    <span class="muted">{{ t('docs_folder') }}</span>
+                    <code class="docs-path">...</code>
+                </div>
+                <div class="status-body">
+                    <button id="reindex-btn"
+                            class="status-button"
+                            disabled
+                            hx-post="/api/reindex"
+                            hx-swap="none"
+                            hx-on::after-request="showAlert('{{ t('reindex_started') }}','info',4000); if (document.getElementById('model')) { htmx.trigger('#model','refreshModels'); } if (window.startStatusPolling) { window.startStatusPolling(); } htmx.trigger('#status-card','refreshStatus');">
+                        {{ t('status_loading') }}
+                    </button>
+                </div>
+            </section>
+
+            <section class="card controls-card" id="settings-card" tabindex="-1">
+                <div class="field">
+                    <label for="model">{{ t('model_label') }}</label>
+                    <select id="model"
+                            name="model"
+                            disabled
+                            hx-get="/api/models"
+                            hx-trigger="load once"
+                            hx-target="#model"
+                            hx-swap="outerHTML">
+                        <option value="">{{ t('model_loading') }}</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="topk-slider">{{ t('top_k_label') }}</label>
+                    <div class="slider-row">
+                        <input type="range" id="topk-slider" min="1" max="50" value="8">
+                        <span id="topk-value">8</span>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <section class="card role-row-card" id="role-strip-card">
+            <div class="role-row-head">
+                <div class="card-title">{{ t('role_label') }}</div>
+            </div>
+            <div class="role-grid role-strip" id="role-selector">
+                {% for role in default_role_definitions %}
+                <label class="role-card{% if loop.first %} is-selected{% endif %}" for="role-{{ role.id }}">
+                    <input type="radio"
+                           id="role-{{ role.id }}"
+                           name="role-selector"
+                           value="{{ role.id }}"
+                           {% if loop.first %}checked{% endif %}>
+                    <img src="{{ role.image_src }}"
+                         data-role-image="{{ role.id }}"
+                         alt="{{ role.label }}">
+                    <span class="role-copy">
+                        <span class="role-name">{{ role.label }}</span>
+                        <span class="role-note">{{ role.description }}</span>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="card ask-card">
+            <script id="role-prompt-defaults" type="application/json">{{ role_prompt_defaults_by_lang | tojson }}</script>
+            <script id="language-labels" type="application/json">{{ language_labels | tojson }}</script>
+            <script id="role-image-catalog" type="application/json">{{ role_image_catalog | tojson }}</script>
+            <script id="default-role-definitions" type="application/json">{{ default_role_definitions | tojson }}</script>
+            <script id="server-profile-data" type="application/json">{{ server_profile | tojson }}</script>
+            <script id="settings-i18n" type="application/json">{{ settings_i18n | tojson }}</script>
+            <script id="model-manager-i18n" type="application/json">{{ model_manager_i18n | tojson }}</script>
+            <form id="ask-form"
+                  hx-post="/api/ask"
+                  hx-target="#ask-response"
+                  hx-swap="innerHTML"
+                  hx-sync="this:replace">
+                <input type="hidden" name="topk" id="topk-hidden" value="8">
+                <input type="hidden" name="model" id="model-hidden" value="">
+                <input type="hidden" name="role" id="role-hidden" value="analyst">
+                <input type="hidden" name="role_label" id="role-label-hidden" value="{{ default_role_definitions[0]['label'] if default_role_definitions else t('role_analyst') }}">
+                <input type="hidden" name="role_style" id="role-style-hidden" value="{{ default_role_style }}">
+                <input type="hidden" name="answer_language" id="answer-language-hidden" value="{{ lang }}">
+                <input type="hidden" name="debug_mode" id="debug-mode-hidden" value="0">
+                <input type="hidden" name="custom_role_prompt" id="custom-role-prompt-hidden" value="">
+                <input type="hidden" id="history-limit-hidden" value="{{ default_history_limit }}">
+                <div class="field question-field">
+                    <label for="question">{{ t('question_label') }}</label>
+                    <div class="question-input-shell">
+                        <textarea id="question" name="question" rows="4"></textarea>
+                        <div class="ask-progress" id="ask-progress">
+                            <div class="linear-progress">
+                                <span class="bar bar1"></span>
+                                <span class="bar bar2"></span>
+                            </div>
+                            <span class="ask-progress-text">{{ t('loading_generic') }}</span>
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" id="ask-btn" class="primary ask-submit" disabled>{{ t('ask_button') }}</button>
+            </form>
+            <div id="ask-response" class="response-panel">
+                <div class="field">
+                    <label for="answer">{{ t('answer_label') }}</label>
+                    <textarea id="answer" rows="6" readonly></textarea>
+                </div>
+                <details id="context-panel" class="context-card">
+                    <summary>{{ t('context_accordion') }}</summary>
+                    <div id="context-content" class="context-body">
+                        <p class="muted">{{ t('context_placeholder') }}</p>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <section class="card history-card"
+                 id="history-card"
+                 hx-get="/api/history"
+                 hx-vals='js:{limit:(document.getElementById("history-limit-hidden") ? document.getElementById("history-limit-hidden").value : {{ default_history_limit }}),lang:(document.getElementById("app") ? document.getElementById("app").dataset.lang : "{{ lang }}")}'
+                 hx-trigger="load once, refreshHistory"
+                 hx-target="this"
+                 hx-swap="innerHTML">
+            <div class="history-head">
+                <h2>{{ t('history_title') }}</h2>
+                <button class="outline history-clear-btn" disabled aria-disabled="true">{{ t('history_clear') }}</button>
+            </div>
+            <p class="muted history-empty">{{ t('loading_generic') }}</p>
+        </section>
+    </main>
+    <footer class="app-footer">
+        <span class="app-footer-item">v{{ app_meta.version }}</span>
+        <span class="app-footer-item"><code>{{ app_meta.default_model }}</code></span>
+        <span class="app-footer-item app-footer-runtime">
+            {{ t('footer_embedding_runtime') }}:
+            <strong>
+                {% if app_meta.embedding_runtime.device == 'cuda' %}
+                {{ t('embedding_runtime_cuda') }}
+                {% else %}
+                {{ t('embedding_runtime_cpu') }}
+                {% endif %}
+            </strong>
+            {% if app_meta.embedding_runtime.cuda_device_name %}
+            <span class="app-footer-runtime-device">{{ app_meta.embedding_runtime.cuda_device_name }}</span>
+            {% endif %}
+            {% if app_meta.embedding_runtime.model_loaded and app_meta.embedding_runtime.model_device %}
+            <code class="app-footer-runtime-slot">{{ app_meta.embedding_runtime.model_device }}</code>
+            {% endif %}
+        </span>
+        <span class="app-footer-item">by <a href="{{ app_meta.author_url }}" target="_blank" rel="noopener noreferrer">{{ app_meta.author_name }}</a></span>
+        <span class="app-footer-item"><a href="{{ app_meta.github_url }}" target="_blank" rel="noopener noreferrer">GitHub</a></span>
+    </footer>
+    <div id="settings-modal" class="settings-modal" hidden>
+        <div class="settings-backdrop" data-settings-close></div>
+        <section class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <header class="settings-header">
+                <h2 id="settings-title">{{ t('settings_title') }}</h2>
+                <button type="button" class="settings-close-btn" id="settings-close-btn" aria-label="{{ t('settings_close') }}">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </header>
+            <nav class="settings-tabs" aria-label="{{ t('settings_tabs_label') }}">
+                <button type="button" class="settings-tab is-active" data-settings-tab="general" aria-pressed="true">{{ t('settings_tab_general') }}</button>
+                <button type="button" class="settings-tab" data-settings-tab="models" aria-pressed="false">{{ t('settings_tab_models') }}</button>
+                <button type="button" class="settings-tab" data-settings-tab="roles" aria-pressed="false">{{ t('settings_tab_roles') }}</button>
+            </nav>
+            <div class="settings-body">
+                <section class="settings-pane is-active" data-settings-pane="general">
+                    <div class="field">
+                        <label for="settings-history-limit">{{ t('settings_history_limit') }}</label>
+                        <div class="slider-row">
+                            <input type="range" id="settings-history-limit" min="1" max="{{ history_max_items }}" step="1" value="{{ default_history_limit }}">
+                            <span id="settings-history-limit-value">{{ default_history_limit }}</span>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="settings-docs-path">{{ t('settings_docs_path') }}</label>
+                        <div class="settings-docs-path-row">
+                            <input id="settings-docs-path"
+                                   type="text"
+                                   value="{{ app_meta.docs_path }}"
+                                   data-default-path="{{ app_meta.default_docs_path }}"
+                                   placeholder="{{ app_meta.default_docs_path }}">
+                            <button type="button"
+                                    class="outline settings-inline-btn"
+                                    id="settings-docs-picker-btn">{{ t('settings_docs_path_browse') }}</button>
+                        </div>
+                        <p class="settings-hint muted">{{ t('settings_docs_path_hint') }}</p>
+                    </div>
+                    <div class="field">
+                        <label for="settings-answer-language">{{ t('settings_answer_language') }}</label>
+                        <select id="settings-answer-language">
+                            <option value="interface" selected>{{ t('answer_language_interface') }}</option>
+                            <option value="en">{{ t('language_en') }}</option>
+                            <option value="ru">{{ t('language_ru') }}</option>
+                            <option value="nl">{{ t('language_nl') }}</option>
+                            <option value="zh">{{ t('language_zh') }}</option>
+                            <option value="he">{{ t('language_he') }}</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="settings-role-style">{{ t('settings_role_style') }}</label>
+                        <select id="settings-role-style">
+                            <option value="concise"{% if default_role_style == 'concise' %} selected{% endif %}>{{ t('style_concise') }}</option>
+                            <option value="balanced"{% if default_role_style == 'balanced' %} selected{% endif %}>{{ t('style_balanced') }}</option>
+                            <option value="detailed"{% if default_role_style == 'detailed' %} selected{% endif %}>{{ t('style_detailed') }}</option>
+                        </select>
+                    </div>
+                    <label class="settings-toggle-row" for="settings-debug-mode">
+                        <span>{{ t('settings_debug_mode') }}</span>
+                        <input type="checkbox" id="settings-debug-mode">
+                    </label>
+                    <p class="settings-hint muted">{{ t('settings_hint') }}</p>
+                </section>
+                <section class="settings-pane" data-settings-pane="models" hidden>
+                    <section class="settings-models-card" id="settings-embedding-card">
+                    <div class="settings-prompts-head">
+                        <h3>{{ t('settings_embedding_model') }}</h3>
+                        <p class="settings-hint muted">{{ t('settings_embedding_model_hint') }}</p>
+                    </div>
+                    <div class="field">
+                        <label for="settings-embedding-model-select">{{ t('settings_embedding_model') }}</label>
+                        <select id="settings-embedding-model-select"
+                                data-current-value="{{ app_meta.embedding_model }}"
+                                data-default-value="{{ app_meta.default_embedding_model }}">
+                            {% for model_name in embedding_model_catalog %}
+                            <option value="{{ model_name }}"{% if model_name == app_meta.embedding_model %} selected{% endif %}>{{ model_name }}</option>
+                            {% endfor %}
+                            <option value="custom"{% if app_meta.embedding_model not in embedding_model_catalog %} selected{% endif %}>{{ t('settings_embedding_model_custom') }}</option>
+                        </select>
+                        <input id="settings-embedding-model-custom"
+                               type="text"
+                               value="{% if app_meta.embedding_model not in embedding_model_catalog %}{{ app_meta.embedding_model }}{% endif %}"
+                               placeholder="{{ t('settings_embedding_model_custom_placeholder') }}"
+                               {% if app_meta.embedding_model in embedding_model_catalog %}hidden{% endif %}>
+                        <p class="settings-runtime-line">
+                            <span class="settings-runtime-label">{{ t('settings_embedding_runtime') }}:</span>
+                            <strong>
+                                {% if app_meta.embedding_runtime.device == 'cuda' %}
+                                {{ t('embedding_runtime_cuda') }}
+                                {% else %}
+                                {{ t('embedding_runtime_cpu') }}
+                                {% endif %}
+                            </strong>
+                            {% if app_meta.embedding_runtime.cuda_device_name %}
+                            <span class="settings-runtime-device">{{ app_meta.embedding_runtime.cuda_device_name }}</span>
+                            {% endif %}
+                            {% if app_meta.embedding_runtime.model_loaded and app_meta.embedding_runtime.model_device %}
+                            <code class="settings-runtime-slot">{{ app_meta.embedding_runtime.model_device }}</code>
+                            {% endif %}
+                        </p>
+                    </div>
+                    </section>
+                    <section class="settings-models-card" id="settings-models-card">
+                    <div class="settings-models-head">
+                        <div class="settings-prompts-head">
+                            <h3>{{ t('settings_model_manager') }}</h3>
+                            <p class="settings-hint muted">{{ t('settings_model_manager_hint') }}</p>
+                        </div>
+                        <button type="button" class="outline settings-inline-btn" id="models-refresh-btn">{{ t('models_refresh') }}</button>
+                    </div>
+                    <div id="models-pull-status" class="models-pull-status" hidden></div>
+                    <div class="settings-models-layout">
+                        <section class="settings-models-pane">
+                            <div class="card-title">{{ t('models_installed') }}</div>
+                            <div id="installed-models-list" class="models-list">
+                                <p class="muted">{{ t('loading_generic') }}</p>
+                            </div>
+                        </section>
+                        <section class="settings-models-pane">
+                            <div class="card-title">{{ t('models_recommended') }}</div>
+                            <div id="recommended-models-list" class="models-list">
+                                <p class="muted">{{ t('loading_generic') }}</p>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="field">
+                        <label for="manual-model-name">{{ t('models_manual_add') }}</label>
+                        <div class="models-manual-row">
+                            <input id="manual-model-name" type="text" placeholder="{{ t('models_manual_placeholder') }}">
+                            <button type="button" class="primary" id="manual-model-pull-btn">{{ t('models_pull_button') }}</button>
+                        </div>
+                    </section>
+                </section>
+                <section class="settings-pane" data-settings-pane="roles" hidden>
+                    <section class="settings-custom-roles-card" id="settings-custom-roles-card">
+                    <div class="settings-prompts-head">
+                        <h3>{{ t('settings_custom_roles') }}</h3>
+                        <p class="settings-hint muted">{{ t('settings_custom_roles_hint') }}</p>
+                    </div>
+                    <div class="custom-role-server-actions">
+                        <button type="button" class="outline" id="custom-roles-export-btn">{{ t('settings_custom_roles_export') }}</button>
+                        <button type="button" class="outline" id="custom-roles-import-btn">{{ t('settings_custom_roles_import') }}</button>
+                        <button type="button" class="outline is-danger" id="custom-roles-reset-btn">{{ t('settings_custom_roles_reset') }}</button>
+                        <input id="custom-roles-import-file" type="file" accept=".json,application/json" hidden>
+                    </div>
+                    <div id="settings-custom-roles-list" class="custom-roles-list">
+                        <p class="muted">{{ t('loading_generic') }}</p>
+                    </div>
+                    <div class="custom-role-editor">
+                        <input type="hidden" id="custom-role-edit-id" value="">
+                        <div class="custom-role-editor-grid">
+                            <div class="field">
+                                <label for="custom-role-name">{{ t('settings_custom_roles_name') }}</label>
+                                <input id="custom-role-name"
+                                       type="text"
+                                       placeholder="{{ t('settings_custom_roles_name_placeholder') }}">
+                            </div>
+                            <div class="field">
+                                <label for="custom-role-image">{{ t('settings_custom_roles_image') }}</label>
+                                <div class="role-image-picker">
+                                    <img id="custom-role-image-preview"
+                                         class="settings-role-image-preview"
+                                         src="{{ role_image_catalog['_shared']['default_src'] }}"
+                                         alt="{{ t('settings_custom_roles_image') }}">
+                                    <select id="custom-role-image">
+                                        {% for option in role_image_catalog['_shared']['options'] %}
+                                        <option value="{{ option['value'] }}"{% if option['value'] == role_image_catalog['_shared']['default'] %} selected{% endif %}>{{ option['label'] }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="custom-role-answer-language">{{ t('settings_custom_roles_answer_language') }}</label>
+                                <select id="custom-role-answer-language">
+                                    <option value="interface">{{ t('answer_language_interface') }}</option>
+                                    <option value="en">{{ t('language_en') }}</option>
+                                    <option value="ru">{{ t('language_ru') }}</option>
+                                    <option value="nl">{{ t('language_nl') }}</option>
+                                    <option value="zh">{{ t('language_zh') }}</option>
+                                    <option value="he">{{ t('language_he') }}</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="custom-role-default-model">{{ t('settings_custom_roles_default_model') }}</label>
+                                <select id="custom-role-default-model">
+                                    <option value="">{{ t('settings_custom_roles_default_model_inherit') }}</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="custom-role-default-style">{{ t('settings_custom_roles_default_style') }}</label>
+                                <select id="custom-role-default-style">
+                                    <option value="">{{ t('settings_custom_roles_default_style_inherit') }}</option>
+                                    <option value="concise">{{ t('style_concise') }}</option>
+                                    <option value="balanced">{{ t('style_balanced') }}</option>
+                                    <option value="detailed">{{ t('style_detailed') }}</option>
+                                </select>
+                            </div>
+                            <div class="field custom-role-editor-span">
+                                <label for="custom-role-description">{{ t('settings_custom_roles_description') }}</label>
+                                <textarea id="custom-role-description"
+                                          rows="3"
+                                          placeholder="{{ t('settings_custom_roles_description_placeholder') }}"></textarea>
+                            </div>
+                            <div class="field custom-role-editor-span">
+                                <label for="custom-role-prompt">{{ t('settings_custom_roles_prompt') }}</label>
+                                <textarea id="custom-role-prompt"
+                                          rows="5"
+                                          placeholder="{{ t('settings_custom_roles_prompt_placeholder') }}"></textarea>
+                            </div>
+                        </div>
+                        <div class="custom-role-actions">
+                            <button type="button" class="primary" id="custom-role-save-btn">{{ t('settings_custom_roles_save') }}</button>
+                            <button type="button" class="outline" id="custom-role-clear-btn">{{ t('settings_custom_roles_clear') }}</button>
+                        </div>
+                    </section>
+                    <section class="settings-role-images-card" id="settings-role-images-card">
+                    <div class="settings-prompts-head">
+                        <h3>{{ t('settings_role_images') }}</h3>
+                        <p class="settings-hint muted">{{ t('settings_role_images_hint') }}</p>
+                    </div>
+                    <div class="settings-role-image-grid">
+                        <div class="field role-image-field">
+                            <label for="settings-role-image-analyst">{{ t('role_analyst') }}</label>
+                            <div class="role-image-picker">
+                                <img id="settings-role-image-preview-analyst"
+                                     class="settings-role-image-preview"
+                                     src="{{ role_image_catalog['analyst']['default_src'] }}"
+                                     alt="{{ t('role_analyst') }}">
+                                <select id="settings-role-image-analyst">
+                                    {% for option in role_image_catalog['analyst']['options'] %}
+                                    <option value="{{ option['value'] }}"{% if option['value'] == role_image_catalog['analyst']['default'] %} selected{% endif %}>{{ option['label'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field role-image-field">
+                            <label for="settings-role-image-engineer">{{ t('role_engineer') }}</label>
+                            <div class="role-image-picker">
+                                <img id="settings-role-image-preview-engineer"
+                                     class="settings-role-image-preview"
+                                     src="{{ role_image_catalog['engineer']['default_src'] }}"
+                                     alt="{{ t('role_engineer') }}">
+                                <select id="settings-role-image-engineer">
+                                    {% for option in role_image_catalog['engineer']['options'] %}
+                                    <option value="{{ option['value'] }}"{% if option['value'] == role_image_catalog['engineer']['default'] %} selected{% endif %}>{{ option['label'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field role-image-field">
+                            <label for="settings-role-image-archivist">{{ t('role_archivist') }}</label>
+                            <div class="role-image-picker">
+                                <img id="settings-role-image-preview-archivist"
+                                     class="settings-role-image-preview"
+                                     src="{{ role_image_catalog['archivist']['default_src'] }}"
+                                     alt="{{ t('role_archivist') }}">
+                                <select id="settings-role-image-archivist">
+                                    {% for option in role_image_catalog['archivist']['options'] %}
+                                    <option value="{{ option['value'] }}"{% if option['value'] == role_image_catalog['archivist']['default'] %} selected{% endif %}>{{ option['label'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="settings-prompts-card" id="settings-role-prompts-card">
+                    <div class="settings-prompts-head">
+                        <h3>{{ t('settings_role_prompts') }}</h3>
+                        <p class="settings-hint muted" id="settings-role-prompts-scope" data-template="{{ t('settings_role_prompts_scope') }}"></p>
+                        <p class="settings-hint muted">{{ t('settings_role_prompts_hint') }}</p>
+                    </div>
+                    <div class="field">
+                        <label for="settings-role-prompt-analyst">{{ t('role_analyst') }}</label>
+                        <textarea id="settings-role-prompt-analyst" rows="5"></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="settings-role-prompt-engineer">{{ t('role_engineer') }}</label>
+                        <textarea id="settings-role-prompt-engineer" rows="5"></textarea>
+                    </div>
+                    <div class="field">
+                        <label for="settings-role-prompt-archivist">{{ t('role_archivist') }}</label>
+                        <textarea id="settings-role-prompt-archivist" rows="5"></textarea>
+                    </div>
+                    </section>
+                </section>
+            </div>
+            <div class="docs-browser-overlay" id="docs-browser-overlay" hidden>
+                <div class="docs-browser-backdrop" data-docs-browser-close></div>
+                <section class="docs-browser-dialog docs-browser-card" id="docs-browser-card" role="dialog" aria-modal="true" aria-labelledby="docs-browser-title">
+                    <div class="docs-browser-head">
+                        <div>
+                            <div class="card-title" id="docs-browser-title">{{ t('docs_browser_title') }}</div>
+                            <code id="docs-browser-current-path">{{ app_meta.docs_path }}</code>
+                        </div>
+                        <div class="docs-browser-head-actions">
+                            <button type="button"
+                                    class="outline settings-inline-btn"
+                                    id="docs-browser-up-btn">{{ t('docs_browser_up') }}</button>
+                            <button type="button"
+                                    class="outline settings-inline-btn"
+                                    id="docs-browser-close-btn">{{ t('docs_browser_close') }}</button>
+                        </div>
+                    </div>
+                    <div class="docs-browser-toolbar">
+                        <input id="docs-browser-search"
+                               type="search"
+                               class="docs-browser-search"
+                               placeholder="{{ t('docs_browser_search_placeholder') }}"
+                               autocomplete="off">
+                    </div>
+                    <div id="docs-browser-list" class="docs-browser-list">
+                        <p class="muted">{{ t('loading_generic') }}</p>
+                    </div>
+                    <div class="docs-browser-footer">
+                        <button type="button"
+                                class="primary"
+                                id="docs-browser-use-btn">{{ t('docs_browser_use_current') }}</button>
+                    </div>
+                </section>
+            </div>
+            <footer class="settings-footer">
+                <button type="button" class="outline" id="settings-reset-btn">{{ t('settings_reset') }}</button>
+                <button type="button" class="primary" id="settings-save-btn">{{ t('settings_apply') }}</button>
+            </footer>
+        </section>
+    </div>
+</div>

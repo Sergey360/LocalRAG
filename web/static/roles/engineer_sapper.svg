@@ -1,0 +1,30 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Engineer Sapper</title>
+  <desc id="desc">Fantasy siege sapper engineer with blueprint and bolt launcher</desc>
+  <defs>
+    <linearGradient id="bg-sapper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a2118"/>
+      <stop offset="55%" stop-color="#314427"/>
+      <stop offset="100%" stop-color="#6a4423"/>
+    </linearGradient>
+    <linearGradient id="coat-sapper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5c874d"/>
+      <stop offset="100%" stop-color="#2b4123"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-sapper)"/>
+  <rect x="24" y="32" width="140" height="92" rx="14" fill="#efe5c5" stroke="#cb9c53" stroke-width="3"/>
+  <path d="M48 94 L92 56 L136 94" fill="none" stroke="#4e7b59" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M62 106 H126" stroke="#6d5331" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="238" cy="82" r="20" fill="#221d18" stroke="#d5a556" stroke-width="4"/>
+  <path d="M216 98 L260 66" stroke="#d5a556" stroke-width="6" stroke-linecap="round"/>
+  <path d="M220 68 L256 96" stroke="#d5a556" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="238" cy="82" r="8" fill="#d5a556"/>
+  <path d="M132 194 C138 158 148 132 162 114 C176 96 194 92 210 98 C226 104 238 120 244 144 C248 160 248 176 244 194 Z" fill="url(#coat-sapper)"/>
+  <circle cx="190" cy="112" r="29" fill="#d7a56d"/>
+  <path d="M160 104 C166 80 178 68 190 68 C202 68 214 80 220 104 C210 92 172 92 160 104 Z" fill="#6d4721"/>
+  <circle cx="180" cy="112" r="4" fill="#20150d"/>
+  <circle cx="200" cy="112" r="4" fill="#20150d"/>
+  <path d="M178 126 Q190 134 202 126" fill="none" stroke="#372315" stroke-width="3" stroke-linecap="round"/>
+  <rect x="118" y="148" width="36" height="18" rx="6" fill="#d9ae61" transform="rotate(-18 136 157)"/>
+</svg>

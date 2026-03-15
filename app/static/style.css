@@ -1,0 +1,243 @@
+/* LocalRAG Styles */
+
+:root {
+  --bg: #0f1115;
+  --card: #181b22;
+  --ink: #e9edf3;
+  --muted: #9aa4b2;
+  --brand: #f97316;
+  --brand-ink: #111;
+  --stroke: #222634;
+  --focus: #60a5fa;
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --err: #ef4444;
+  --radius: 14px;
+  --pad: 14px;
+  --gap: 14px;
+  --maxw: 1080px;
+  --btn-h: 44px;
+  --inp-h: 44px;
+  --shadow: 0 6px 22px rgba(0, 0, 0, 0.22);
+  font-synthesis-weight: none;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --ink: #111827;
+    --muted: #6b7280;
+    --stroke: #e5e7eb;
+    --brand-ink: #fff;
+  }
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell,
+    Inter, "Helvetica Neue", Arial;
+}
+#app {
+  max-width: var(--maxw);
+  margin: 24px auto 32px;
+  padding: 0 16px;
+}
+.box {
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: var(--pad);
+  box-shadow: var(--shadow);
+}
+.row {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.grid {
+  display: grid;
+  gap: var(--gap);
+}
+@media (min-width: 900px) {
+  .grid.two {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+h1,
+h2,
+h3 {
+  margin: 0 0 6px;
+}
+small,
+.muted {
+  color: var(--muted);
+}
+
+/* header */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 auto 18px;
+  max-width: var(--maxw);
+  padding: 0 16px;
+}
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--ink);
+}
+.app-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  border: 1px solid var(--stroke);
+  background: #fff;
+}
+.app-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+.langs {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lang {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--stroke);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.lang:hover {
+  border-color: var(--focus);
+}
+.lang .flag {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  background-size: cover;
+  background-position: center;
+}
+
+/* flags */
+.flag.en {
+  background-image: url("/file=static/flags/gb.svg");
+}
+.flag.ru {
+  background-image: url("/file=static/flags/ru.svg");
+}
+.flag.nl {
+  background-image: url("/file=static/flags/nl.svg");
+}
+.flag.zh {
+  background-image: url("/file=static/flags/cn.svg");
+}
+.flag.he {
+  background-image: url("/file=static/flags/il.svg");
+}
+
+/* inputs */
+input[type="text"],
+textarea,
+.gr-textbox textarea {
+  background: var(--card) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--stroke) !important;
+  height: var(--inp-h);
+  border-radius: 12px !important;
+  padding: 10px 12px !important;
+  outline: none !important;
+}
+textarea,
+.gr-textbox textarea {
+  min-height: 120px;
+  height: auto;
+}
+input:focus,
+textarea:focus {
+  border-color: var(--focus) !important;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25) !important;
+}
+
+/* buttons */
+button,
+.gr-button {
+  height: var(--btn-h);
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+}
+button.primary,
+.btn-primary {
+  background: var(--brand);
+  border-color: transparent;
+  color: var(--brand-ink);
+  font-weight: 600;
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* sliders, selects */
+input[type="range"] {
+  accent-color: var(--brand);
+}
+select {
+  height: var(--inp-h);
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: var(--card);
+  color: var(--ink);
+  padding: 0 12px;
+}
+
+/* cards */
+.card {
+  padding: 16px;
+  border: 1px solid var(--stroke);
+  border-radius: 12px;
+  background: var(--card);
+}
+
+/* footer */
+.footer {
+  max-width: var(--maxw);
+  margin: 22px auto 4px;
+  padding: 14px 16px 4px;
+  border-top: 1px solid var(--stroke);
+  color: var(--muted);
+  font-size: 0.92rem;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+}
+.footer a {
+  color: inherit;
+  text-decoration: none;
+}

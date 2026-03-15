@@ -1,0 +1,35 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Archivist</title>
+  <desc id="desc">Fantasy archivist with illuminated tome and sealed records</desc>
+  <defs>
+    <linearGradient id="bg-archivist" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#221526"/>
+      <stop offset="58%" stop-color="#41284c"/>
+      <stop offset="100%" stop-color="#7f5a2a"/>
+    </linearGradient>
+    <linearGradient id="robe-archivist" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8f4fa7"/>
+      <stop offset="100%" stop-color="#4c2556"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-archivist)"/>
+  <rect x="26" y="34" width="128" height="30" rx="8" fill="#f1d7a2" stroke="#cfa658" stroke-width="3"/>
+  <rect x="26" y="70" width="128" height="30" rx="8" fill="#ead7f1" stroke="#b589d0" stroke-width="3"/>
+  <rect x="26" y="106" width="128" height="30" rx="8" fill="#edd0d6" stroke="#d592a0" stroke-width="3"/>
+  <circle cx="50" cy="49" r="6" fill="#8c4eaa"/>
+  <circle cx="74" cy="49" r="6" fill="#cf7c36"/>
+  <circle cx="98" cy="49" r="6" fill="#5f6fb2"/>
+  <path d="M204 60 C224 60 238 68 246 82 L246 178 C238 192 224 200 204 200 C186 200 172 192 164 178 L164 82 C172 68 186 60 204 60 Z" fill="#f0dfb6" stroke="#c69a4b" stroke-width="4"/>
+  <path d="M176 86 H234" stroke="#a14d74" stroke-width="3" stroke-linecap="round"/>
+  <path d="M176 102 H234" stroke="#a14d74" stroke-width="3" stroke-linecap="round"/>
+  <path d="M176 118 H220" stroke="#a14d74" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="220" cy="168" r="12" fill="#d89a3e"/>
+  <path d="M214 168 H226 M220 162 V174" stroke="#7a3d17" stroke-width="3" stroke-linecap="round"/>
+  <path d="M132 194 C138 158 146 132 160 116 C174 100 192 96 208 100 C224 104 238 120 244 144 C248 160 248 176 244 194 Z" fill="url(#robe-archivist)"/>
+  <circle cx="188" cy="112" r="29" fill="#e4be88"/>
+  <path d="M160 104 C166 80 176 70 188 70 C200 70 210 80 216 104 C206 92 170 92 160 104 Z" fill="#e7d8a1"/>
+  <circle cx="178" cy="112" r="4" fill="#24170e"/>
+  <circle cx="198" cy="112" r="4" fill="#24170e"/>
+  <path d="M176 126 Q188 136 200 126" fill="none" stroke="#362116" stroke-width="3" stroke-linecap="round"/>
+  <path d="M144 156 C160 150 176 148 192 150" fill="none" stroke="#f2d8a4" stroke-width="3" opacity="0.6"/>
+</svg>

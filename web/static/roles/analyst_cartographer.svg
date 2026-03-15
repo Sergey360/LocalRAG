@@ -1,0 +1,32 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Analyst Cartographer</title>
+  <desc id="desc">Fantasy cartographer analyst with star map and brass compass</desc>
+  <defs>
+    <linearGradient id="bg-cartographer" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#18263d"/>
+      <stop offset="55%" stop-color="#314c67"/>
+      <stop offset="100%" stop-color="#6e4d29"/>
+    </linearGradient>
+    <linearGradient id="cloak-cartographer" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5677b9"/>
+      <stop offset="100%" stop-color="#25385b"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-cartographer)"/>
+  <rect x="26" y="28" width="138" height="96" rx="14" fill="#efe0b4" stroke="#cda75b" stroke-width="3"/>
+  <path d="M48 54 H142 M48 80 H142 M70 40 V110 M116 40 V110" stroke="#8f6a36" stroke-width="2.5" opacity="0.65"/>
+  <circle cx="82" cy="72" r="18" fill="none" stroke="#3d5e9d" stroke-width="4"/>
+  <path d="M82 50 L82 94 M60 72 L104 72" stroke="#3d5e9d" stroke-width="3" stroke-linecap="round"/>
+  <path d="M48 108 L86 84 L122 64 L146 80" fill="none" stroke="#2a4f84" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="250" cy="58" r="26" fill="#f8d472" opacity="0.2"/>
+  <circle cx="250" cy="58" r="10" fill="#fff0c7" opacity="0.4"/>
+  <path d="M228 58 H272 M250 36 V80 M236 44 L264 72 M264 44 L236 72" stroke="#f7e9bb" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <path d="M132 194 C138 158 148 130 162 112 C176 94 194 90 210 96 C226 102 238 118 244 142 C248 158 248 176 244 194 Z" fill="url(#cloak-cartographer)"/>
+  <circle cx="190" cy="112" r="29" fill="#f1c48b"/>
+  <path d="M162 104 C170 82 180 72 190 72 C200 72 210 82 218 104 C208 92 172 92 162 104 Z" fill="#d7b56c"/>
+  <circle cx="180" cy="112" r="4" fill="#24170f"/>
+  <circle cx="200" cy="112" r="4" fill="#24170f"/>
+  <path d="M178 126 Q190 134 202 126" fill="none" stroke="#3a281a" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="140" cy="154" r="16" fill="#d6b167" stroke="#8d6633" stroke-width="3"/>
+  <path d="M140 138 L140 170 M124 154 L156 154" stroke="#714c20" stroke-width="3" stroke-linecap="round"/>
+</svg>

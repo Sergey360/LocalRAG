@@ -1,0 +1,31 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" role="img" aria-labelledby="title desc">
+  <title id="title">Archivist Relickeeper</title>
+  <desc id="desc">Fantasy relic keeper archivist with sealed chest and sacred inventory</desc>
+  <defs>
+    <linearGradient id="bg-relickeeper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#20171b"/>
+      <stop offset="56%" stop-color="#4a3147"/>
+      <stop offset="100%" stop-color="#6c5227"/>
+    </linearGradient>
+    <linearGradient id="robe-relickeeper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#b36a96"/>
+      <stop offset="100%" stop-color="#552b4e"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="240" rx="24" fill="url(#bg-relickeeper)"/>
+  <rect x="26" y="38" width="130" height="54" rx="12" fill="#3a2720" stroke="#c99953" stroke-width="3"/>
+  <rect x="42" y="58" width="98" height="34" rx="8" fill="#60412f" stroke="#ddb46e" stroke-width="3"/>
+  <circle cx="91" cy="75" r="8" fill="#dca24e"/>
+  <path d="M86 75 H96 M91 70 V80" stroke="#7d4720" stroke-width="3" stroke-linecap="round"/>
+  <rect x="28" y="104" width="128" height="28" rx="8" fill="#f2dfbf" stroke="#cba25a" stroke-width="3"/>
+  <path d="M48 118 H132" stroke="#8f6b3b" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="236" cy="74" r="24" fill="#efdba8" opacity="0.22"/>
+  <path d="M236 54 L246 68 L264 72 L250 84 L254 102 L236 92 L218 102 L222 84 L208 72 L226 68 Z" fill="none" stroke="#ead08c" stroke-width="4" stroke-linejoin="round" opacity="0.75"/>
+  <path d="M132 194 C138 158 148 132 162 114 C176 96 194 94 210 100 C226 106 238 122 244 146 C248 162 248 178 244 194 Z" fill="url(#robe-relickeeper)"/>
+  <circle cx="190" cy="112" r="29" fill="#e4bc86"/>
+  <path d="M160 104 C166 80 178 68 190 68 C202 68 214 80 220 104 C210 92 172 92 160 104 Z" fill="#f0d49d"/>
+  <circle cx="180" cy="112" r="4" fill="#26170f"/>
+  <circle cx="200" cy="112" r="4" fill="#26170f"/>
+  <path d="M178 126 Q190 136 202 126" fill="none" stroke="#372218" stroke-width="3" stroke-linecap="round"/>
+  <path d="M142 156 H184" stroke="#f2ddad" stroke-width="3" opacity="0.75"/>
+</svg>

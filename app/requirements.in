@@ -1,0 +1,16 @@
+﻿fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+requests
+langchain-community
+chromadb
+gradio
+sentence-transformers
+watchdog
+pypdf
+docx2txt
+langchain-huggingface
+huggingface_hub[hf_xet]
+faiss-cpu
+nvidia-ml-py
