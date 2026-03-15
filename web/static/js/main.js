@@ -2226,10 +2226,12 @@
                 showAlert(payload.message || getModelText('models_pull_button', root, 'Download'), 'info', 3500);
             }
             await loadModelManager(root, { silent: true });
+            return true;
         } catch (error) {
             if (typeof showAlert === 'function') {
                 showAlert(error instanceof Error ? error.message : String(error), 'error', 5000);
             }
+            return false;
         }
     }
 
@@ -2824,7 +2826,7 @@
 
         if (manualModelPullBtn && manualModelPullBtn.dataset.boundSettings !== '1') {
             manualModelPullBtn.dataset.boundSettings = '1';
-            manualModelPullBtn.addEventListener('click', function () {
+            manualModelPullBtn.addEventListener('click', async function () {
                 const modelName = manualModelInput ? manualModelInput.value : '';
                 if (!normalizePreferredModel(modelName)) {
                     if (typeof showAlert === 'function') {
@@ -2832,8 +2834,8 @@
                     }
                     return;
                 }
-                startModelPullRequest(modelName, document);
-                if (manualModelInput) {
+                const started = await startModelPullRequest(modelName, document);
+                if (started && manualModelInput) {
                     manualModelInput.value = '';
                 }
             });

@@ -121,6 +121,53 @@ def test_models_pull_endpoint_rejects_invalid_name(monkeypatch):
     assert 'valid model name' in payload['message']
 
 
+def test_models_pull_endpoint_translates_not_found_error(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        'start_model_pull',
+        lambda model_name: {
+            'ok': False,
+            'message': 'pull model manifest: file does not exist',
+            'model': model_name,
+        },
+    )
+    monkeypatch.setattr(
+        main,
+        'build_model_manager_payload',
+        lambda t_local: {
+            'ok': True,
+            'installed': [],
+            'default_model': '',
+            'recommended': [],
+            'pull': {'active': False, 'model': 'google/translategemma-12b-it', 'status': 'error', 'label': 'Model download failed.'},
+        },
+    )
+
+    resp = client.post('/api/models/pull', json={'model': 'google/translategemma-12b-it'})
+
+    assert resp.status_code == 400
+    payload = resp.json()
+    assert payload['ok'] is False
+    assert 'not found in the Ollama library' in payload['message']
+
+
+def test_models_pull_status_translates_not_found_error():
+    main.reset_model_pull_state()
+    main.update_model_pull_state(
+        active=False,
+        model='google/translategemma-12b-it',
+        status='error',
+        error='pull model manifest: file does not exist',
+    )
+
+    resp = client.get('/api/models/pull_status')
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload['pull']['status'] == 'error'
+    assert 'not found in the Ollama library' in payload['pull']['label']
+
+
 def test_embedding_models_data_returns_available_and_recommended(monkeypatch):
     monkeypatch.setattr(
         main,

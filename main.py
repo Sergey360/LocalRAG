@@ -737,12 +737,23 @@ def translate_model_manager_message(message_key: str, t_local, **params: Any) ->
     raw_text = str(message_key or "").strip()
     if not raw_text:
         return t_local("models_unavailable")
+    if "pull model manifest: file does not exist" in raw_text:
+        try:
+            return t_local("models_not_found_in_ollama").format(**params)
+        except Exception:
+            return t_local("models_not_found_in_ollama")
     if raw_text.startswith(t_local("error_prefix")):
         return raw_text
     return f"{t_local('error_prefix')}{raw_text}"
 
 
-def get_pull_status_label(status: str, t_local, error: str = "") -> str:
+def get_pull_status_label(
+    status: str,
+    t_local,
+    error: str = "",
+    *,
+    model: str = "",
+) -> str:
     normalized = str(status or "idle").strip().lower()
     mapping = {
         "idle": "models_pull_status_idle",
@@ -754,6 +765,11 @@ def get_pull_status_label(status: str, t_local, error: str = "") -> str:
     }
     key = mapping.get(normalized, "models_pull_status_pulling")
     template = t_local(key)
+    if normalized == "error" and "pull model manifest: file does not exist" in str(error or ""):
+        try:
+            return t_local("models_not_found_in_ollama").format(model=model or "-")
+        except Exception:
+            return t_local("models_not_found_in_ollama")
     if "{error}" in template:
         return template.format(error=error or "-")
     return template
@@ -873,6 +889,7 @@ def get_model_manager_i18n(t_local) -> dict[str, str]:
         "models_pull_completed",
         "models_delete_confirm",
         "models_manual_hint",
+        "models_not_found_in_ollama",
     ]
     return {key: t_local(key) for key in keys}
 
@@ -1056,6 +1073,7 @@ def build_model_manager_payload(t_local) -> dict[str, Any]:
             str(pull_state.get("status") or ""),
             t_local,
             str(pull_state.get("error") or ""),
+            model=str(pull_state.get("model") or ""),
         )
         payload = {
             "ok": True,
@@ -1071,6 +1089,7 @@ def build_model_manager_payload(t_local) -> dict[str, Any]:
             str(pull_state.get("status") or ""),
             t_local,
             str(pull_state.get("error") or ""),
+            model=str(pull_state.get("model") or ""),
         )
         payload = {
             "ok": False,
@@ -2055,6 +2074,7 @@ def api_models_pull_status(lang: str = Cookie(DEFAULT_LANG)):
         str(pull_state.get("status") or ""),
         t_local,
         str(pull_state.get("error") or ""),
+        model=str(pull_state.get("model") or ""),
     )
     return JSONResponse({"ok": True, "pull": pull_state})
 
