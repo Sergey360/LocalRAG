@@ -61,7 +61,7 @@ docker compose --env-file .env.example up --build -d
 Create a release archive with checksum and manifest:
 
 ```sh
-python scripts/package_release.py
+python scripts/package_release.py --source-ref v0.9.0
 ```
 
 Artifacts are written to `dist/`:
