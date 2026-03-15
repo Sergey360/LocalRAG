@@ -20,6 +20,7 @@
     const ANSWER_LANGUAGE_OPTIONS = ['interface', 'en', 'ru', 'nl', 'zh', 'he'];
     const ROLE_STYLE_OPTIONS = ['concise', 'balanced', 'detailed'];
     const MODEL_MANAGER_POLL_MS = 2000;
+    const EMBEDDING_MODEL_MANAGER_POLL_MS = 2000;
     const MODEL_POLICY_ORDER = {
         default: ['qwen3.5:9b', 'qwen3:8b', 'qwen3:14b', 'gemma3:12b', 'aya-expanse:8b', 'qwen2.5:14b', 'qwen2.5:7b-instruct', 'phi3:mini'],
         en: ['qwen3.5:9b', 'qwen3:8b', 'qwen3:14b', 'gemma3:12b', 'phi3:mini', 'qwen2.5:14b', 'aya-expanse:8b', 'qwen2.5:7b-instruct'],
@@ -42,8 +43,10 @@
     const CUSTOM_ROLE_ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
     let askRequestPending = false;
     let modelManagerPollHandle = null;
+    let embeddingModelManagerPollHandle = null;
     let statusPollHandle = null;
     let lastModelManagerPayload = null;
+    let lastEmbeddingModelManagerPayload = null;
     let lastDocsBrowserPayload = null;
     let activeSettingsTab = 'general';
 
@@ -374,6 +377,21 @@
         return root.querySelector('#settings-embedding-model-custom') || document.getElementById('settings-embedding-model-custom');
     }
 
+    function getEmbeddingModelsStatus(scope) {
+        const root = scope instanceof HTMLElement ? scope : document;
+        return root.querySelector('#embedding-models-pull-status') || document.getElementById('embedding-models-pull-status');
+    }
+
+    function getInstalledEmbeddingModelsList(scope) {
+        const root = scope instanceof HTMLElement ? scope : document;
+        return root.querySelector('#installed-embedding-models-list') || document.getElementById('installed-embedding-models-list');
+    }
+
+    function getRecommendedEmbeddingModelsList(scope) {
+        const root = scope instanceof HTMLElement ? scope : document;
+        return root.querySelector('#recommended-embedding-models-list') || document.getElementById('recommended-embedding-models-list');
+    }
+
     function getCurrentEmbeddingModel(scope) {
         const select = getEmbeddingModelSelect(scope);
         const customInput = getEmbeddingModelCustomInput(scope);
@@ -444,6 +462,24 @@
             return customInput ? String(customInput.value || '').trim() : '';
         }
         return selected;
+    }
+
+    function selectEmbeddingModel(modelName, scope) {
+        const root = scope instanceof HTMLElement ? scope : document;
+        const value = String(modelName || '').trim();
+        if (!value) {
+            return;
+        }
+        setCurrentEmbeddingModel(root, value);
+        setEmbeddingModelControls(value, root);
+        if (typeof showAlert === 'function') {
+            showAlert(
+                getSettingsText('settings_embedding_model_selected', root, 'Selected embedding model: {model}. Click Apply settings to reindex.')
+                    .replace('{model}', value),
+                'info',
+                3500
+            );
+        }
     }
 
     function getDocsBrowserCard(scope) {
@@ -1447,6 +1483,20 @@
         }, MODEL_MANAGER_POLL_MS);
     }
 
+    function clearEmbeddingModelManagerPoll() {
+        if (embeddingModelManagerPollHandle) {
+            window.clearTimeout(embeddingModelManagerPollHandle);
+            embeddingModelManagerPollHandle = null;
+        }
+    }
+
+    function scheduleEmbeddingModelManagerPoll(scope) {
+        clearEmbeddingModelManagerPoll();
+        embeddingModelManagerPollHandle = window.setTimeout(function () {
+            loadEmbeddingModelManager(scope || document, { silent: true });
+        }, EMBEDDING_MODEL_MANAGER_POLL_MS);
+    }
+
     function renderPullStatus(pullState, scope) {
         const root = scope instanceof HTMLElement ? scope : document;
         const container = root.querySelector('#models-pull-status') || document.getElementById('models-pull-status');
@@ -1629,6 +1679,135 @@
         renderInstalledModels(payload, scope);
         renderRecommendedModels(payload, scope);
         renderPullStatus(payload && payload.pull ? payload.pull : {}, scope);
+    }
+
+    function renderEmbeddingPullStatus(pullState, scope) {
+        const container = getEmbeddingModelsStatus(scope);
+        if (!container) {
+            return;
+        }
+        const pull = pullState && typeof pullState === 'object' ? pullState : {};
+        const status = String(pull.status || 'idle').trim().toLowerCase();
+        const shouldShow = !!(pull.active || ['starting', 'loading', 'success', 'completed', 'error'].includes(status));
+        if (!shouldShow) {
+            container.hidden = true;
+            container.innerHTML = '';
+            return;
+        }
+        const modelName = escapeHtml(String(pull.model || ''));
+        const label = escapeHtml(String(pull.label || pull.status || ''));
+        const progressLabel = status === 'success' || status === 'completed'
+            ? escapeHtml(getSettingsText('embedding_models_prepare_status_success', scope, 'Embedding model is ready.'))
+            : (status === 'error'
+                ? escapeHtml(getSettingsText('embedding_models_prepare_status_error', scope, 'Failed to prepare embedding model: {error}').replace('{error}', String(pull.error || '-')))
+                : escapeHtml(getSettingsText('embedding_models_prepare_status_loading', scope, 'Preparing embedding model...')));
+        const progressWidth = status === 'error' || status === 'success' || status === 'completed' ? 100 : 48;
+        container.hidden = false;
+        container.innerHTML =
+            '<div class="models-pull-head">'
+            + '<span>' + label + (modelName ? ' · <code>' + modelName + '</code>' : '') + '</span>'
+            + '<span>' + progressLabel + '</span>'
+            + '</div>'
+            + '<div class="models-pull-progress"><div class="models-pull-progress-bar" style="width:'
+            + progressWidth
+            + '%"></div></div>';
+    }
+
+    function renderInstalledEmbeddingModels(payload, scope) {
+        const container = getInstalledEmbeddingModelsList(scope);
+        if (!container) {
+            return;
+        }
+        const data = payload && typeof payload === 'object' ? payload : {};
+        const currentModel = String(data.current_model || '').trim();
+        const models = Array.isArray(data.available) ? data.available : [];
+
+        if (!models.length) {
+            container.innerHTML = '<p class="muted models-empty">' + escapeHtml(getSettingsText('embedding_models_no_available', scope, 'No prepared embedding models yet.')) + '</p>';
+            return;
+        }
+
+        container.innerHTML = models.map(function (item) {
+            const modelName = String(item && item.name || '');
+            const source = String(item && item.source || '');
+            const badges = [];
+            if (modelName === currentModel) {
+                badges.push('<span class="model-badge">' + escapeHtml(getSettingsText('embedding_models_current_badge', scope, 'Current')) + '</span>');
+            }
+            badges.push('<span class="model-badge is-installed">' + escapeHtml(getSettingsText('embedding_models_cached_badge', scope, 'Ready')) + '</span>');
+            if (source === 'local_path') {
+                badges.push('<span class="model-badge">' + escapeHtml(getSettingsText('embedding_models_local_path_badge', scope, 'Local path')) + '</span>');
+            }
+            return ''
+                + '<article class="model-card">'
+                + '  <div class="model-card-head">'
+                + '    <div class="model-card-title"><strong><code>' + escapeHtml(modelName) + '</code></strong></div>'
+                + '    <div class="model-badges">' + badges.join('') + '</div>'
+                + '  </div>'
+                + '  <div class="model-card-actions">'
+                + '    <button type="button" class="primary" data-embedding-model-action="use" data-embedding-model-name="' + escapeAttribute(modelName) + '">'
+                +         escapeHtml(getSettingsText('embedding_models_use_button', scope, 'Use'))
+                + '    </button>'
+                + '  </div>'
+                + '</article>';
+        }).join('');
+    }
+
+    function renderRecommendedEmbeddingModels(payload, scope) {
+        const container = getRecommendedEmbeddingModelsList(scope);
+        if (!container) {
+            return;
+        }
+        const data = payload && typeof payload === 'object' ? payload : {};
+        const currentModel = String(data.current_model || '').trim();
+        const pullState = data.pull && typeof data.pull === 'object' ? data.pull : {};
+        const activePullModel = String(pullState.model || '').trim();
+        const models = Array.isArray(data.recommended) ? data.recommended : [];
+
+        if (!models.length) {
+            container.innerHTML = '<p class="muted models-empty">' + escapeHtml(getSettingsText('embedding_models_no_recommended', scope, 'No recommended embedding models.')) + '</p>';
+            return;
+        }
+
+        container.innerHTML = models.map(function (item) {
+            const modelName = String(item && item.name || '');
+            const available = !!(item && item.available);
+            const badges = [];
+            if (available) {
+                badges.push('<span class="model-badge is-installed">' + escapeHtml(getSettingsText('embedding_models_cached_badge', scope, 'Ready')) + '</span>');
+            }
+            if (modelName === currentModel) {
+                badges.push('<span class="model-badge">' + escapeHtml(getSettingsText('embedding_models_current_badge', scope, 'Current')) + '</span>');
+            }
+            const actionLabel = available
+                ? getSettingsText('embedding_models_use_button', scope, 'Use')
+                : (pullState.active && activePullModel === modelName
+                    ? getSettingsText('embedding_models_prepare_status_loading', scope, 'Preparing embedding model...')
+                    : getSettingsText('embedding_models_prepare_button', scope, 'Download / check'));
+            const action = available ? 'use' : 'prepare';
+            return ''
+                + '<article class="model-card">'
+                + '  <div class="model-card-head">'
+                + '    <div class="model-card-title">'
+                + '      <strong><code>' + escapeHtml(modelName) + '</code></strong>'
+                + '      <span class="model-card-summary">' + escapeHtml(String(item && item.summary || '')) + '</span>'
+                + '    </div>'
+                + '    <div class="model-badges">' + badges.join('') + '</div>'
+                + '  </div>'
+                + '  <div class="model-card-actions">'
+                + '    <button type="button" class="' + (available ? 'outline' : 'primary') + '" data-embedding-model-action="' + action + '" data-embedding-model-name="' + escapeAttribute(modelName) + '"' + ((!available && pullState.active) ? ' disabled' : '') + '>'
+                +         escapeHtml(actionLabel)
+                + '    </button>'
+                + '  </div>'
+                + '</article>';
+        }).join('');
+    }
+
+    function renderEmbeddingModelManager(payload, scope) {
+        lastEmbeddingModelManagerPayload = payload;
+        renderInstalledEmbeddingModels(payload, scope);
+        renderRecommendedEmbeddingModels(payload, scope);
+        renderEmbeddingPullStatus(payload && payload.pull ? payload.pull : {}, scope);
     }
 
     function applyPreferredModelSetting(modelName, scope) {
@@ -1938,6 +2117,7 @@
         if (responsePayload && responsePayload.embedding_model) {
             setCurrentEmbeddingModel(root, responsePayload.embedding_model);
             setEmbeddingModelControls(responsePayload.embedding_model, root);
+            loadEmbeddingModelManager(root, { silent: true });
         }
 
         if (window.htmx) {
@@ -1993,6 +2173,43 @@
         }
     }
 
+    async function loadEmbeddingModelManager(scope, options) {
+        const root = scope instanceof HTMLElement ? scope : document;
+        const installed = getInstalledEmbeddingModelsList(root);
+        const recommended = getRecommendedEmbeddingModelsList(root);
+        const config = options && typeof options === 'object' ? options : {};
+        const previousPull = lastEmbeddingModelManagerPayload && typeof lastEmbeddingModelManagerPayload === 'object'
+            ? lastEmbeddingModelManagerPayload.pull
+            : null;
+        if (!installed || !recommended) {
+            return;
+        }
+        if (!config.silent) {
+            const loadingText = escapeHtml(getLoadingMessage());
+            installed.innerHTML = '<p class="muted models-empty">' + loadingText + '</p>';
+            recommended.innerHTML = '<p class="muted models-empty">' + loadingText + '</p>';
+        }
+        try {
+            const payload = await fetchJson('/api/embedding-models/data');
+            renderEmbeddingModelManager(payload, root);
+            if (previousPull && previousPull.active && payload.pull && !payload.pull.active) {
+                // Refresh availability badges after the background prepare finishes.
+                renderEmbeddingModelManager(payload, root);
+            }
+            if (payload.pull && payload.pull.active) {
+                scheduleEmbeddingModelManagerPoll(root);
+            } else {
+                clearEmbeddingModelManagerPoll();
+            }
+        } catch (error) {
+            clearEmbeddingModelManagerPoll();
+            const message = error instanceof Error ? error.message : getSettingsText('embedding_models_no_available', root, 'No prepared embedding models yet.');
+            installed.innerHTML = '<p class="muted models-empty">' + escapeHtml(message) + '</p>';
+            recommended.innerHTML = '<p class="muted models-empty">' + escapeHtml(getSettingsText('embedding_models_no_recommended', root, 'No recommended embedding models.')) + '</p>';
+            renderEmbeddingPullStatus({}, root);
+        }
+    }
+
     async function startModelPullRequest(modelName, scope) {
         const root = scope instanceof HTMLElement ? scope : document;
         try {
@@ -2009,6 +2226,36 @@
                 showAlert(payload.message || getModelText('models_pull_button', root, 'Download'), 'info', 3500);
             }
             await loadModelManager(root, { silent: true });
+        } catch (error) {
+            if (typeof showAlert === 'function') {
+                showAlert(error instanceof Error ? error.message : String(error), 'error', 5000);
+            }
+        }
+    }
+
+    async function startEmbeddingModelPullRequest(modelName, scope) {
+        const root = scope instanceof HTMLElement ? scope : document;
+        const target = String(modelName || '').trim();
+        if (!target) {
+            if (typeof showAlert === 'function') {
+                showAlert(getSettingsText('embedding_models_invalid_name', root, 'Enter an embedding model or local path.'), 'error', 4500);
+            }
+            return;
+        }
+        try {
+            const payload = await fetchJson('/api/embedding-models/pull', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ embedding_model: target })
+            });
+            if (typeof showAlert === 'function') {
+                showAlert(payload.message || getSettingsText('embedding_models_prepare_button', root, 'Download / check'), 'info', 3500);
+            }
+            await loadEmbeddingModelManager(root, { silent: true });
         } catch (error) {
             if (typeof showAlert === 'function') {
                 showAlert(error instanceof Error ? error.message : String(error), 'error', 5000);
@@ -2212,6 +2459,7 @@
         const docsPathInput = getDocsPathInput(root);
         const embeddingModelSelect = getEmbeddingModelSelect(root);
         const embeddingModelCustomInput = getEmbeddingModelCustomInput(root);
+        const embeddingModelPrepareBtn = root.querySelector('#embedding-model-prepare-btn') || document.getElementById('embedding-model-prepare-btn');
         const docsPickerBtn = root.querySelector('#settings-docs-picker-btn') || document.getElementById('settings-docs-picker-btn');
         const docsBrowserUpBtn = getDocsBrowserUpButton(root);
         const docsBrowserUseBtn = getDocsBrowserUseButton(root);
@@ -2243,6 +2491,7 @@
                 closeDocsBrowser(document);
                 activateSettingsTab(activeSettingsTab, document);
                 openSettingsModal();
+                loadEmbeddingModelManager(document);
                 loadModelManager(document);
                 try {
                     const customRoles = await loadServerCustomRoles(document);
@@ -2372,6 +2621,13 @@
             embeddingModelCustomInput.dataset.boundSettings = '1';
             embeddingModelCustomInput.addEventListener('input', function () {
                 // Keep current input visible and user-controlled; validation happens on save.
+            });
+        }
+
+        if (embeddingModelPrepareBtn && embeddingModelPrepareBtn.dataset.boundSettings !== '1') {
+            embeddingModelPrepareBtn.dataset.boundSettings = '1';
+            embeddingModelPrepareBtn.addEventListener('click', function () {
+                startEmbeddingModelPullRequest(resolveEmbeddingModelSetting(document), document);
             });
         }
 
@@ -2643,6 +2899,18 @@
                     }
                     if (action === 'delete') {
                         deleteCustomRole(roleId, document);
+                    }
+                    return;
+                }
+                const embeddingTrigger = evt.target && evt.target.closest ? evt.target.closest('[data-embedding-model-action]') : null;
+                if (embeddingTrigger) {
+                    const action = String(embeddingTrigger.getAttribute('data-embedding-model-action') || '');
+                    const modelName = String(embeddingTrigger.getAttribute('data-embedding-model-name') || '');
+                    if (action === 'prepare') {
+                        startEmbeddingModelPullRequest(modelName, document);
+                    }
+                    if (action === 'use') {
+                        selectEmbeddingModel(modelName, document);
                     }
                     return;
                 }

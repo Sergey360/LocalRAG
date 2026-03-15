@@ -26,6 +26,7 @@ from app import (  # noqa: E402
     OLLAMA_BASE_URL,
     get_default_model,
     get_default_embedding_model_name,
+    is_embedding_model_available_locally,
     get_default_docs_path_display,
     get_docs_path_display,
     get_embedding_model_name,
@@ -33,7 +34,10 @@ from app import (  # noqa: E402
     get_index_status,
     get_index_status_meta,
     get_indexed_file_count,
+    list_available_embedding_models,
+    normalize_embedding_model_name,
     get_ollama_models,
+    prepare_embedding_model_artifact,
     get_retrieval_debug_snapshot,
     list_browsable_directories,
     load_persisted_index,
@@ -131,8 +135,18 @@ RECOMMENDED_MODEL_CATALOG = [
     },
 ]
 RECOMMENDED_EMBEDDING_MODEL_CATALOG = [
-    "intfloat/multilingual-e5-large",
-    "BAAI/bge-m3",
+    {
+        "name": "intfloat/multilingual-e5-large",
+        "summary_key": "embedding_model_catalog_e5_large",
+    },
+    {
+        "name": "BAAI/bge-m3",
+        "summary_key": "embedding_model_catalog_bge_m3",
+    },
+    {
+        "name": "Alibaba-NLP/gte-multilingual-base",
+        "summary_key": "embedding_model_catalog_gte_multilingual_base",
+    },
 ]
 ROLE_IMAGE_LIBRARY = [
     {"value": "analyst", "path": "roles/analyst.png"},
@@ -429,6 +443,15 @@ _model_pull_state: dict[str, Any] = {
     "status": "idle",
     "completed": None,
     "total": None,
+    "error": "",
+    "started_at": None,
+    "finished_at": None,
+}
+_embedding_model_pull_lock = threading.Lock()
+_embedding_model_pull_state: dict[str, Any] = {
+    "active": False,
+    "model": "",
+    "status": "idle",
     "error": "",
     "started_at": None,
     "finished_at": None,
@@ -849,6 +872,7 @@ def get_model_manager_i18n(t_local) -> dict[str, str]:
         "models_pull_active",
         "models_pull_completed",
         "models_delete_confirm",
+        "models_manual_hint",
     ]
     return {key: t_local(key) for key in keys}
 
@@ -862,7 +886,29 @@ def get_settings_i18n(t_local) -> dict[str, str]:
         "settings_embedding_model_custom_placeholder",
         "settings_embedding_model_updated",
         "settings_embedding_model_invalid",
+        "settings_embedding_model_selected",
         "settings_embedding_runtime",
+        "settings_embedding_model_manager_hint",
+        "embedding_models_available",
+        "embedding_models_recommended",
+        "embedding_models_no_available",
+        "embedding_models_no_recommended",
+        "embedding_models_cached_badge",
+        "embedding_models_current_badge",
+        "embedding_models_local_path_badge",
+        "embedding_models_use_button",
+        "embedding_models_prepare_button",
+        "embedding_models_prepare_started",
+        "embedding_models_prepare_busy",
+        "embedding_models_prepare_status_idle",
+        "embedding_models_prepare_status_starting",
+        "embedding_models_prepare_status_loading",
+        "embedding_models_prepare_status_success",
+        "embedding_models_prepare_status_error",
+        "embedding_models_invalid_name",
+        "embedding_model_catalog_e5_large",
+        "embedding_model_catalog_bge_m3",
+        "embedding_model_catalog_gte_multilingual_base",
         "settings_tabs_label",
         "settings_tab_general",
         "settings_tab_models",
@@ -930,6 +976,28 @@ def reset_model_pull_state() -> dict[str, Any]:
     )
 
 
+def get_embedding_model_pull_state() -> dict[str, Any]:
+    with _embedding_model_pull_lock:
+        return dict(_embedding_model_pull_state)
+
+
+def update_embedding_model_pull_state(**changes: Any) -> dict[str, Any]:
+    with _embedding_model_pull_lock:
+        _embedding_model_pull_state.update(changes)
+        return dict(_embedding_model_pull_state)
+
+
+def reset_embedding_model_pull_state() -> dict[str, Any]:
+    return update_embedding_model_pull_state(
+        active=False,
+        model="",
+        status="idle",
+        error="",
+        started_at=None,
+        finished_at=None,
+    )
+
+
 def fetch_ollama_model_inventory() -> list[dict[str, Any]]:
     response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=10)
     response.raise_for_status()
@@ -961,6 +1029,22 @@ def fetch_ollama_model_inventory() -> list[dict[str, Any]]:
             }
         )
     return inventory
+
+
+def get_recommended_embedding_models(t_local) -> list[dict[str, Any]]:
+    models: list[dict[str, Any]] = []
+    for item in RECOMMENDED_EMBEDDING_MODEL_CATALOG:
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        models.append(
+            {
+                "name": name,
+                "summary": t_local(str(item.get("summary_key") or "")),
+                "available": is_embedding_model_available_locally(name),
+            }
+        )
+    return models
 
 
 def build_model_manager_payload(t_local) -> dict[str, Any]:
@@ -999,6 +1083,65 @@ def build_model_manager_payload(t_local) -> dict[str, Any]:
     return payload
 
 
+def translate_embedding_model_manager_message(
+    message_key: str, t_local, **params: Any
+) -> str:
+    mapping = {
+        "invalid_embedding_model_name": "embedding_models_invalid_name",
+        "prepare_busy": "embedding_models_prepare_busy",
+        "prepare_started": "embedding_models_prepare_started",
+    }
+    translation_key = mapping.get(message_key)
+    if translation_key:
+        try:
+            return t_local(translation_key).format(**params)
+        except Exception:
+            return t_local(translation_key)
+    raw_text = str(message_key or "").strip()
+    if not raw_text:
+        return t_local("embedding_models_invalid_name")
+    if raw_text.startswith(t_local("error_prefix")):
+        return raw_text
+    return f"{t_local('error_prefix')}{raw_text}"
+
+
+def get_embedding_pull_status_label(status: str, t_local, error: str = "") -> str:
+    normalized = str(status or "idle").strip().lower()
+    mapping = {
+        "idle": "embedding_models_prepare_status_idle",
+        "starting": "embedding_models_prepare_status_starting",
+        "loading": "embedding_models_prepare_status_loading",
+        "success": "embedding_models_prepare_status_success",
+        "completed": "embedding_models_prepare_status_success",
+        "error": "embedding_models_prepare_status_error",
+    }
+    key = mapping.get(normalized, "embedding_models_prepare_status_loading")
+    template = t_local(key)
+    if "{error}" in template:
+        return template.format(error=error or "-")
+    return template
+
+
+def build_embedding_model_manager_payload(t_local) -> dict[str, Any]:
+    pull_state = get_embedding_model_pull_state()
+    pull_state["label"] = get_embedding_pull_status_label(
+        str(pull_state.get("status") or ""),
+        t_local,
+        str(pull_state.get("error") or ""),
+    )
+    current_model = get_embedding_model_name()
+    available_models = list_available_embedding_models()
+    return {
+        "ok": True,
+        "current_model": current_model,
+        "default_model": get_default_embedding_model_name(),
+        "available": available_models,
+        "recommended": get_recommended_embedding_models(t_local),
+        "pull": pull_state,
+        "runtime": get_embedding_runtime_info(),
+    }
+
+
 def _pull_model_worker(model_name: str) -> None:
     try:
         with requests.post(
@@ -1018,6 +1161,15 @@ def _pull_model_worker(model_name: str) -> None:
                     continue
                 if not isinstance(event, dict):
                     continue
+                if event.get("error"):
+                    update_model_pull_state(
+                        active=False,
+                        model=model_name,
+                        status="error",
+                        error=str(event.get("error") or ""),
+                        finished_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                    return
                 saw_updates = True
                 update_model_pull_state(
                     active=True,
@@ -1075,6 +1227,63 @@ def start_model_pull(model_name: str) -> dict[str, Any]:
         daemon=True,
     ).start()
     return {"ok": True, "message": "pull_started", "model": normalized}
+
+
+def _prepare_embedding_model_worker(model_name: str) -> None:
+    try:
+        update_embedding_model_pull_state(
+            active=True,
+            model=model_name,
+            status="loading",
+            error="",
+        )
+        prepare_embedding_model_artifact(model_name)
+        update_embedding_model_pull_state(
+            active=False,
+            model=model_name,
+            status="success",
+            error="",
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logging.error("Embedding model prepare failed for %s: %s", model_name, exc)
+        update_embedding_model_pull_state(
+            active=False,
+            model=model_name,
+            status="error",
+            error=str(exc),
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+
+def start_embedding_model_pull(model_name: str) -> dict[str, Any]:
+    normalized = normalize_embedding_model_name(model_name)
+    if not normalized:
+        return {"ok": False, "message": "invalid_embedding_model_name"}
+    with _embedding_model_pull_lock:
+        if _embedding_model_pull_state.get("active"):
+            current_model = str(_embedding_model_pull_state.get("model") or "")
+            return {
+                "ok": False,
+                "message": "prepare_busy",
+                "model": current_model,
+            }
+        _embedding_model_pull_state.update(
+            {
+                "active": True,
+                "model": normalized,
+                "status": "starting",
+                "error": "",
+                "started_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": None,
+            }
+        )
+    threading.Thread(
+        target=_prepare_embedding_model_worker,
+        args=(normalized,),
+        daemon=True,
+    ).start()
+    return {"ok": True, "message": "prepare_started", "model": normalized}
 
 
 def delete_ollama_model(model_name: str) -> dict[str, Any]:
@@ -1319,7 +1528,11 @@ def index(
             "language_labels": get_language_labels(t_local),
             "role_image_catalog": get_role_image_catalog(t_local),
             "default_role_definitions": get_default_role_definitions(t_local),
-            "embedding_model_catalog": list(RECOMMENDED_EMBEDDING_MODEL_CATALOG),
+            "embedding_model_catalog": [
+                str(item.get("name") or "").strip()
+                for item in RECOMMENDED_EMBEDDING_MODEL_CATALOG
+                if str(item.get("name") or "").strip()
+            ],
             "server_profile": get_server_profile(),
             "settings_i18n": get_settings_i18n(t_local),
             "model_manager_i18n": get_model_manager_i18n(t_local),
@@ -1857,6 +2070,21 @@ async def read_model_name_from_request(request: Request) -> str:
     return normalize_model_name(form.get("model"))
 
 
+async def read_embedding_model_name_from_request(request: Request) -> str:
+    try:
+        payload = await request.json()
+        if isinstance(payload, dict) and "embedding_model" in payload:
+            return normalize_embedding_model_name(payload.get("embedding_model"))
+        if isinstance(payload, dict) and "model" in payload:
+            return normalize_embedding_model_name(payload.get("model"))
+    except Exception:
+        pass
+    form = await request.form()
+    return normalize_embedding_model_name(
+        form.get("embedding_model") or form.get("model")
+    )
+
+
 @app.post("/api/models/pull", response_class=JSONResponse)
 async def api_models_pull(request: Request, lang: str = Cookie(DEFAULT_LANG)):
     translations = load_translations(lang)
@@ -1902,6 +2130,57 @@ async def api_models_delete(request: Request, lang: str = Cookie(DEFAULT_LANG)):
             "ok": bool(result.get("ok")),
             "message": message,
             "pull": build_model_manager_payload(t_local).get("pull", {}),
+        },
+        status_code=status_code,
+    )
+
+
+@app.get("/api/embedding-models/data", response_class=JSONResponse)
+def api_embedding_models_data(lang: str = Cookie(DEFAULT_LANG)):
+    translations = load_translations(lang)
+
+    def t_local(key: str):
+        return translations.get(key, key)
+
+    return JSONResponse(build_embedding_model_manager_payload(t_local))
+
+
+@app.get("/api/embedding-models/pull_status", response_class=JSONResponse)
+def api_embedding_models_pull_status(lang: str = Cookie(DEFAULT_LANG)):
+    translations = load_translations(lang)
+
+    def t_local(key: str):
+        return translations.get(key, key)
+
+    pull_state = get_embedding_model_pull_state()
+    pull_state["label"] = get_embedding_pull_status_label(
+        str(pull_state.get("status") or ""),
+        t_local,
+        str(pull_state.get("error") or ""),
+    )
+    return JSONResponse({"ok": True, "pull": pull_state})
+
+
+@app.post("/api/embedding-models/pull", response_class=JSONResponse)
+async def api_embedding_models_pull(request: Request, lang: str = Cookie(DEFAULT_LANG)):
+    translations = load_translations(lang)
+
+    def t_local(key: str):
+        return translations.get(key, key)
+
+    model_name = await read_embedding_model_name_from_request(request)
+    result = start_embedding_model_pull(model_name)
+    message = translate_embedding_model_manager_message(
+        str(result.get("message") or ""),
+        t_local,
+        model=result.get("model") or model_name or "-",
+    )
+    status_code = 200 if result.get("ok") else 400
+    return JSONResponse(
+        {
+            "ok": bool(result.get("ok")),
+            "message": message,
+            "pull": build_embedding_model_manager_payload(t_local).get("pull", {}),
         },
         status_code=status_code,
     )
@@ -2222,7 +2501,11 @@ async def api_lang_switch(request: Request):
                 "language_labels": get_language_labels(t_local),
                 "role_image_catalog": get_role_image_catalog(t_local),
             "default_role_definitions": get_default_role_definitions(t_local),
-            "embedding_model_catalog": list(RECOMMENDED_EMBEDDING_MODEL_CATALOG),
+            "embedding_model_catalog": [
+                str(item.get("name") or "").strip()
+                for item in RECOMMENDED_EMBEDDING_MODEL_CATALOG
+                if str(item.get("name") or "").strip()
+            ],
                 "server_profile": get_server_profile(),
                 "settings_i18n": get_settings_i18n(t_local),
                 "model_manager_i18n": get_model_manager_i18n(t_local),

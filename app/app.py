@@ -253,6 +253,7 @@ def save_runtime_state() -> None:
     payload = {
         "docs_path_display": _current_docs_path_display,
         "embedding_model": _current_embed_model_name,
+        "prepared_embedding_models": sorted(_prepared_embedding_models),
     }
     APP_STATE_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -266,6 +267,11 @@ _initial_docs_value = str(
 )
 DOCS_PATH, DOCS_PATH_DISPLAY = resolve_docs_paths(_initial_docs_value)
 _current_embed_model_name = str(_initial_state.get("embedding_model") or EMBED_MODEL_NAME).strip()
+_prepared_embedding_models = {
+    str(item).strip()
+    for item in (_initial_state.get("prepared_embedding_models") or [])
+    if str(item).strip()
+}
 _current_docs_path = DOCS_PATH
 _current_docs_path_display = DOCS_PATH_DISPLAY
 
@@ -298,6 +304,10 @@ def get_embedding_model_name() -> str:
 
 def get_default_embedding_model_name() -> str:
     return EMBED_MODEL_NAME
+
+
+def normalize_embedding_model_name(raw_value: str | None) -> str:
+    return str(raw_value or "").strip()
 
 
 def get_embedding_runtime_info() -> Dict[str, object]:
@@ -375,6 +385,120 @@ def clear_cached_embeddings() -> None:
     global _cached_embeddings
     with embeddings_lock:
         _cached_embeddings = None
+
+
+def remember_prepared_embedding_model(raw_value: str) -> str:
+    model_name = normalize_embedding_model_name(raw_value)
+    if not model_name:
+        raise ValueError("Embedding model name is required.")
+    _prepared_embedding_models.add(model_name)
+    save_runtime_state()
+    return model_name
+
+
+def _resolve_embedding_local_path(raw_value: str) -> Path | None:
+    candidate = normalize_embedding_model_name(raw_value)
+    if not candidate:
+        return None
+    path = Path(candidate).expanduser()
+    if path.exists():
+        return path.resolve()
+    return None
+
+
+def _directory_has_embedding_artifacts(path: Path) -> bool:
+    markers = (
+        "modules.json",
+        "sentence_bert_config.json",
+        "config_sentence_transformers.json",
+        "1_Pooling/config.json",
+    )
+    return any((path / marker).exists() for marker in markers)
+
+
+def _scan_cached_embedding_models() -> set[str]:
+    try:
+        from huggingface_hub import scan_cache_dir
+
+        cache_info = scan_cache_dir()
+    except Exception:
+        return set()
+
+    cached: set[str] = set()
+    for repo in getattr(cache_info, "repos", []) or []:
+        repo_id = str(getattr(repo, "repo_id", "") or "").strip()
+        if not repo_id:
+            continue
+        for revision in getattr(repo, "revisions", []) or []:
+            snapshot_path = getattr(revision, "snapshot_path", None)
+            if snapshot_path and _directory_has_embedding_artifacts(Path(snapshot_path)):
+                cached.add(repo_id)
+                break
+    return cached
+
+
+def is_embedding_model_available_locally(raw_value: str) -> bool:
+    model_name = normalize_embedding_model_name(raw_value)
+    if not model_name:
+        return False
+    if _resolve_embedding_local_path(model_name):
+        return True
+    if model_name in _prepared_embedding_models:
+        return True
+    return model_name in _scan_cached_embedding_models()
+
+
+def list_available_embedding_models() -> list[dict[str, str]]:
+    names = set(_prepared_embedding_models)
+    names.update(_scan_cached_embedding_models())
+
+    current_model = normalize_embedding_model_name(get_embedding_model_name())
+    if current_model and is_embedding_model_available_locally(current_model):
+        names.add(current_model)
+
+    available: list[dict[str, str]] = []
+    for model_name in sorted(names, key=str.lower):
+        local_path = _resolve_embedding_local_path(model_name)
+        available.append(
+            {
+                "name": model_name,
+                "source": "local_path" if local_path else "cache",
+                "path": str(local_path) if local_path else "",
+            }
+        )
+    return available
+
+
+def _build_embeddings_client(model_name: str) -> HuggingFaceEmbeddings:
+    import torch
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    return HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs={"device": device},
+    )
+
+
+def prepare_embedding_model_artifact(raw_value: str) -> dict[str, object]:
+    global _cached_embeddings
+
+    model_name = normalize_embedding_model_name(raw_value)
+    if not model_name:
+        raise ValueError("Embedding model name is required.")
+
+    embeddings = _build_embeddings_client(model_name)
+    vector = embeddings.embed_query("embedding health check")
+    remember_prepared_embedding_model(model_name)
+
+    if model_name == get_embedding_model_name():
+        with embeddings_lock:
+            _cached_embeddings = embeddings
+
+    return {
+        "model": model_name,
+        "vector_size": len(vector) if hasattr(vector, "__len__") else 0,
+        "model_device": get_loaded_embedding_device(),
+    }
 
 
 def set_docs_path(raw_value: str) -> str:
@@ -1482,13 +1606,7 @@ def get_embeddings():
             return _cached_embeddings
     current_embedding_model = get_embedding_model_name()
     try:
-        import torch
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        embeddings = HuggingFaceEmbeddings(
-            model_name=current_embedding_model,
-            model_kwargs={"device": device},
-        )
+        embeddings = _build_embeddings_client(current_embedding_model)
     except Exception as exc:
         logging.exception("Failed to load embeddings: %s", exc)
         raise RuntimeError(
@@ -1496,6 +1614,7 @@ def get_embeddings():
             "Download it before running (for offline use run once with internet) "
             "or set EMBED_MODEL (or EMBEDDINGS_MODEL_NAME) to a local path."
         ) from exc
+    remember_prepared_embedding_model(current_embedding_model)
     with embeddings_lock:
         _cached_embeddings = embeddings
     return embeddings

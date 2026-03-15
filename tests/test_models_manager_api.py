@@ -10,8 +10,10 @@ client = TestClient(main.app)
 @pytest.fixture(autouse=True)
 def reset_model_state():
     main.reset_model_pull_state()
+    main.reset_embedding_model_pull_state()
     yield
     main.reset_model_pull_state()
+    main.reset_embedding_model_pull_state()
 
 
 def test_models_data_returns_installed_and_recommended(monkeypatch):
@@ -117,3 +119,104 @@ def test_models_pull_endpoint_rejects_invalid_name(monkeypatch):
     payload = resp.json()
     assert payload['ok'] is False
     assert 'valid model name' in payload['message']
+
+
+def test_embedding_models_data_returns_available_and_recommended(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        'list_available_embedding_models',
+        lambda: [{'name': 'BAAI/bge-m3', 'source': 'cache', 'path': ''}],
+    )
+    monkeypatch.setattr(
+        main,
+        'get_recommended_embedding_models',
+        lambda t_local: [
+            {'name': 'intfloat/multilingual-e5-large', 'summary': 'Baseline', 'available': True},
+            {'name': 'Alibaba-NLP/gte-multilingual-base', 'summary': 'Alt', 'available': False},
+        ],
+    )
+
+    resp = client.get('/api/embedding-models/data')
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload['ok'] is True
+    assert payload['available'][0]['name'] == 'BAAI/bge-m3'
+    assert payload['recommended'][0]['name'] == 'intfloat/multilingual-e5-large'
+    assert payload['pull']['status'] == 'idle'
+
+
+def test_embedding_models_pull_endpoint_starts_job(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        'start_embedding_model_pull',
+        lambda model_name: {'ok': True, 'message': 'prepare_started', 'model': model_name},
+    )
+    monkeypatch.setattr(
+        main,
+        'build_embedding_model_manager_payload',
+        lambda t_local: {
+            'ok': True,
+            'available': [],
+            'current_model': 'intfloat/multilingual-e5-large',
+            'default_model': 'intfloat/multilingual-e5-large',
+            'recommended': [],
+            'runtime': {'device': 'cuda'},
+            'pull': {'active': True, 'model': 'Alibaba-NLP/gte-multilingual-base', 'status': 'starting', 'label': 'Preparing embedding model...'},
+        },
+    )
+
+    resp = client.post('/api/embedding-models/pull', json={'embedding_model': 'Alibaba-NLP/gte-multilingual-base'})
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload['ok'] is True
+    assert 'Alibaba-NLP/gte-multilingual-base' in payload['message']
+    assert payload['pull']['active'] is True
+
+
+def test_embedding_models_pull_endpoint_rejects_invalid_name(monkeypatch):
+    monkeypatch.setattr(
+        main,
+        'build_embedding_model_manager_payload',
+        lambda t_local: {
+            'ok': True,
+            'available': [],
+            'current_model': 'intfloat/multilingual-e5-large',
+            'default_model': 'intfloat/multilingual-e5-large',
+            'recommended': [],
+            'runtime': {'device': 'cpu'},
+            'pull': {'active': False, 'model': '', 'status': 'idle', 'label': 'No active embedding model preparation.'},
+        },
+    )
+
+    resp = client.post('/api/embedding-models/pull', json={'embedding_model': '   '})
+
+    assert resp.status_code == 400
+    payload = resp.json()
+    assert payload['ok'] is False
+
+
+def test_ollama_pull_worker_marks_error_from_stream_event(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, decode_unicode=True):
+            yield '{"status":"pulling manifest"}'
+            yield '{"error":"pull model manifest: file does not exist"}'
+
+    monkeypatch.setattr(main.requests, 'post', lambda *args, **kwargs: FakeResponse())
+
+    main.reset_model_pull_state()
+    main._pull_model_worker('google/translategemma-12b-it')
+
+    state = main.get_model_pull_state()
+    assert state['status'] == 'error'
+    assert 'file does not exist' in state['error']

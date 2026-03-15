@@ -314,7 +314,7 @@
                     <section class="settings-models-card" id="settings-embedding-card">
                     <div class="settings-prompts-head">
                         <h3>{{ t('settings_embedding_model') }}</h3>
-                        <p class="settings-hint muted">{{ t('settings_embedding_model_hint') }}</p>
+                        <p class="settings-hint muted">{{ t('settings_embedding_model_manager_hint') }}</p>
                     </div>
                     <div class="field">
                         <label for="settings-embedding-model-select">{{ t('settings_embedding_model') }}</label>
@@ -347,6 +347,24 @@
                             <code class="settings-runtime-slot">{{ app_meta.embedding_runtime.model_device }}</code>
                             {% endif %}
                         </p>
+                        <div class="model-card-actions">
+                            <button type="button" class="outline" id="embedding-model-prepare-btn">{{ t('embedding_models_prepare_button') }}</button>
+                        </div>
+                    </div>
+                    <div id="embedding-models-pull-status" class="models-pull-status" hidden></div>
+                    <div class="settings-models-layout">
+                        <section class="settings-models-pane">
+                            <div class="card-title">{{ t('embedding_models_available') }}</div>
+                            <div id="installed-embedding-models-list" class="models-list">
+                                <p class="muted">{{ t('loading_generic') }}</p>
+                            </div>
+                        </section>
+                        <section class="settings-models-pane">
+                            <div class="card-title">{{ t('embedding_models_recommended') }}</div>
+                            <div id="recommended-embedding-models-list" class="models-list">
+                                <p class="muted">{{ t('loading_generic') }}</p>
+                            </div>
+                        </section>
                     </div>
                     </section>
                     <section class="settings-models-card" id="settings-models-card">
@@ -378,6 +396,8 @@
                             <input id="manual-model-name" type="text" placeholder="{{ t('models_manual_placeholder') }}">
                             <button type="button" class="primary" id="manual-model-pull-btn">{{ t('models_pull_button') }}</button>
                         </div>
+                        <p class="settings-hint muted">{{ t('models_manual_hint') }}</p>
+                    </div>
                     </section>
                 </section>
                 <section class="settings-pane" data-settings-pane="roles" hidden>

@@ -43,6 +43,10 @@ def test_index_page():
     assert 'id="settings-embedding-card"' in resp.text
     assert 'id="settings-embedding-model-select"' in resp.text
     assert 'id="settings-embedding-model-custom"' in resp.text
+    assert 'id="embedding-model-prepare-btn"' in resp.text
+    assert 'id="embedding-models-pull-status"' in resp.text
+    assert 'id="installed-embedding-models-list"' in resp.text
+    assert 'id="recommended-embedding-models-list"' in resp.text
     assert 'data-settings-tab="general"' in resp.text
     assert 'data-settings-tab="models"' in resp.text
     assert 'data-settings-tab="roles"' in resp.text

@@ -1,3 +1,0 @@
-# Files omitted from the public GitHub mirror
-.gitlab-ci.yml
-scripts/publish_github_snapshot.sh
