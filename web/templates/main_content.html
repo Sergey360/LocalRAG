@@ -22,6 +22,13 @@
                 <div class="app-subtitle">{{ t('app_subtitle') }}</div>
             </div>
         </div>
+        <nav class="app-nav" aria-label="{{ t('primary_navigation') }}">
+            <a href="#why">{{ t('nav_why') }}</a>
+            <a href="#features">{{ t('nav_features') }}</a>
+            <a href="#workflow">{{ t('nav_how_it_works') }}</a>
+            <a href="#start">{{ t('nav_start') }}</a>
+            <a href="#quality">{{ t('nav_quality') }}</a>
+        </nav>
         <div class="header-actions">
             <button id="settings-open-btn"
                     class="settings-gear-btn"
@@ -36,7 +43,7 @@
                     </svg>
                 </span>
             </button>
-            <nav class="lang-switch" aria-label="{{ t('language_selector') }}">
+            <nav class="lang-switch" id="language-switch" aria-label="{{ t('language_selector') }}">
                 <button class="lang-btn{% if lang == 'en' %} is-active{% endif %}"
                         aria-pressed="{{ 'true' if lang == 'en' else 'false' }}"
                         hx-post="/api/lang_switch"
@@ -86,11 +93,84 @@
         </div>
     </header>
     <main class="app-main">
-        <section class="card hero">
-            <p class="hero-copy">{{ t('file_info') }}</p>
+        <section class="card hero product-hero" id="home">
+            <div class="hero-layout">
+                <div class="hero-main-copy">
+                    <p class="hero-kicker">{{ t('home_hero_kicker') }}</p>
+                    <h1>{{ t('home_hero_title') }}</h1>
+                    <p class="hero-copy">{{ t('home_hero_subhead') }}</p>
+                    <div class="hero-actions">
+                        <a class="button-link primary" href="#start">{{ t('cta_run_locally') }}</a>
+                        <a class="button-link outline" href="#product-interface">{{ t('cta_view_interface') }}</a>
+                    </div>
+                    <p class="hero-microcopy">{{ t('home_hero_microcopy') }}</p>
+                </div>
+                <div class="hero-media-column">
+                    <picture class="hero-visual">
+                        <source srcset="{{ static_url('media/image/localrag-hero-product-2026-06-06-1600x900.webp') }}" type="image/webp">
+                        <img src="{{ static_url('media/image/localrag-hero-product-2026-06-06-1600x900.png') }}"
+                             alt="{{ t('hero_visual_alt') }}"
+                             width="1600"
+                             height="900"
+                             fetchpriority="high"
+                             decoding="async">
+                    </picture>
+                    <ul class="proof-strip" aria-label="{{ t('product_proof_label') }}">
+                        <li><a href="#start">{{ t('proof_local_files') }}</a></li>
+                        <li><a href="#context-panel">{{ t('proof_source_context') }}</a></li>
+                        <li><a href="#language-switch">{{ t('proof_languages') }}</a></li>
+                        <li><a href="#settings-card">{{ t('proof_stack') }}</a></li>
+                        <li><a href="#settings-card">{{ t('proof_visible_settings') }}</a></li>
+                        <li><a href="#quality">{{ t('proof_quality_checks') }}</a></li>
+                    </ul>
+                </div>
+            </div>
         </section>
 
-        <section class="grid two">
+        <section class="content-band" id="why" aria-labelledby="why-heading">
+            <div class="content-copy">
+                <p class="section-kicker">{{ t('problem_kicker') }}</p>
+                <h2 id="why-heading">{{ t('problem_heading') }}</h2>
+                <p>{{ t('problem_body') }}</p>
+            </div>
+        </section>
+
+        <section class="content-band" id="features" aria-labelledby="features-heading">
+            <div class="content-copy">
+                <h2 id="features-heading">{{ t('product_promise_heading') }}</h2>
+            </div>
+            <div class="feature-grid">
+                <a class="feature-card" href="#start">
+                    <strong>{{ t('promise_index_title') }}</strong>
+                    <span>{{ t('promise_index_body') }}</span>
+                </a>
+                <a class="feature-card" href="#ask-form">
+                    <strong>{{ t('promise_context_title') }}</strong>
+                    <span>{{ t('promise_context_body') }}</span>
+                </a>
+                <a class="feature-card" href="#context-panel">
+                    <strong>{{ t('promise_sources_title') }}</strong>
+                    <span>{{ t('promise_sources_body') }}</span>
+                </a>
+                <a class="feature-card" href="#settings-card">
+                    <strong>{{ t('promise_settings_title') }}</strong>
+                    <span>{{ t('promise_settings_body') }}</span>
+                </a>
+            </div>
+        </section>
+
+        <section class="content-band trust-band" aria-label="{{ t('trust_blocks_label') }}">
+            <article class="trust-block">
+                <h2>{{ t('privacy_heading') }}</h2>
+                <p>{{ t('privacy_body') }}</p>
+            </article>
+            <article class="trust-block">
+                <h2>{{ t('source_trust_heading') }}</h2>
+                <p>{{ t('source_trust_body') }}</p>
+            </article>
+        </section>
+
+        <section class="grid two" id="start">
         <section class="card status-card"
                  id="status-card"
                  data-status-code="{{ index_status_code|default('loading') }}"
@@ -137,6 +217,42 @@
             </section>
         </section>
 
+        <section class="content-band workflow-band" id="workflow" aria-labelledby="workflow-heading">
+            <div class="content-copy">
+                <h2 id="workflow-heading">{{ t('workflow_heading') }}</h2>
+            </div>
+            <ol class="workflow-list">
+                <li><a href="#start"><strong>{{ t('workflow_step_add_title') }}</strong><span>{{ t('workflow_step_add_body') }}</span></a></li>
+                <li><a href="#status-card"><strong>{{ t('workflow_step_reindex_title') }}</strong><span>{{ t('workflow_step_reindex_body') }}</span></a></li>
+                <li><a href="#ask-form"><strong>{{ t('workflow_step_ask_title') }}</strong><span>{{ t('workflow_step_ask_body') }}</span></a></li>
+                <li><a href="#context-panel"><strong>{{ t('workflow_step_sources_title') }}</strong><span>{{ t('workflow_step_sources_body') }}</span></a></li>
+                <li><a href="#settings-card"><strong>{{ t('workflow_step_quality_title') }}</strong><span>{{ t('workflow_step_quality_body') }}</span></a></li>
+            </ol>
+        </section>
+
+        <section class="content-band walkthrough-band" id="walkthrough" aria-labelledby="walkthrough-heading">
+            <div class="content-copy">
+                <p class="section-kicker">{{ t('walkthrough_kicker') }}</p>
+                <h2 id="walkthrough-heading">{{ t('walkthrough_heading') }}</h2>
+                <p>{{ t('walkthrough_body') }}</p>
+            </div>
+            <figure class="walkthrough-poster">
+                <picture>
+                    <source srcset="{{ static_url('media/video/localrag-product-walkthrough-v2-75s-poster-1600x900.webp') }}" type="image/webp">
+                    <img src="{{ static_url('media/video/localrag-product-walkthrough-v2-75s-poster-1600x900.png') }}"
+                         alt="{{ t('walkthrough_poster_alt') }}"
+                         width="1600"
+                         height="900"
+                         loading="lazy"
+                         decoding="async">
+                </picture>
+                <figcaption>
+                    <span>{{ t('walkthrough_caption') }}</span>
+                    <a href="{{ static_url('media/video/localrag-product-walkthrough-v2-75s-transcript.ru.md') }}" target="_blank" rel="noopener noreferrer">{{ t('walkthrough_transcript_link') }}</a>
+                </figcaption>
+            </figure>
+        </section>
+
         <section class="card role-row-card" id="role-strip-card">
             <div class="role-row-head">
                 <div class="card-title">{{ t('role_label') }}</div>
@@ -161,7 +277,7 @@
             </div>
         </section>
 
-        <section class="card ask-card">
+        <section class="card ask-card" id="product-interface">
             <script id="role-prompt-defaults" type="application/json">{{ role_prompt_defaults_by_lang | tojson }}</script>
             <script id="language-labels" type="application/json">{{ language_labels | tojson }}</script>
             <script id="role-image-catalog" type="application/json">{{ role_image_catalog | tojson }}</script>
@@ -225,8 +341,26 @@
             </div>
             <p class="muted history-empty">{{ t('loading_generic') }}</p>
         </section>
+
+        <section class="content-band quality-band" id="quality" aria-labelledby="quality-heading">
+            <div class="content-copy">
+                <h2 id="quality-heading">{{ t('quality_heading') }}</h2>
+                <p>{{ t('quality_body') }}</p>
+            </div>
+            <div class="final-cta">
+                <div>
+                    <h2>{{ t('final_cta_heading') }}</h2>
+                    <p>{{ t('final_cta_body') }}</p>
+                </div>
+                <div class="final-cta-actions">
+                    <a class="button-link primary" href="#start">{{ t('cta_run_locally') }}</a>
+                    <a class="button-link outline" href="/docs">{{ t('cta_open_api_docs') }}</a>
+                </div>
+            </div>
+        </section>
     </main>
     <footer class="app-footer">
+        <span class="app-footer-copy">{{ t('footer_short_copy') }}</span>
         <span class="app-footer-item">v{{ app_meta.version }}</span>
         <span class="app-footer-item"><code>{{ app_meta.default_model }}</code></span>
         <span class="app-footer-item app-footer-runtime">
@@ -247,6 +381,8 @@
         </span>
         <span class="app-footer-item">by <a href="{{ app_meta.author_url }}" target="_blank" rel="noopener noreferrer">{{ app_meta.author_name }}</a></span>
         <span class="app-footer-item"><a href="{{ app_meta.github_url }}" target="_blank" rel="noopener noreferrer">GitHub</a></span>
+        <span class="app-footer-item"><a href="/docs">{{ t('footer_api_docs') }}</a></span>
+        <span class="app-footer-item"><a href="{{ app_meta.github_url }}/releases" target="_blank" rel="noopener noreferrer">{{ t('footer_release_notes') }}</a></span>
     </footer>
     <div id="settings-modal" class="settings-modal" hidden>
         <div class="settings-backdrop" data-settings-close></div>

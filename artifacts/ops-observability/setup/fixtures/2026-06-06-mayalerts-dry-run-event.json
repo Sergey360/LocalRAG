@@ -1,0 +1,34 @@
+{
+  "event_type": "mayalerts.alert.triggered",
+  "source": "localrag-graylog",
+  "service_name": "localrag",
+  "app_env": "staging",
+  "app_release": "0.9.0+d103836",
+  "app_instance_id": "setup-dry-run",
+  "alert_name": "localrag_health_down",
+  "severity": "p2",
+  "summary": "health down for setup dry run",
+  "dedupe_resource": "app_instance:setup-dry-run",
+  "timestamp_utc": "2026-06-06T00:00:00Z",
+  "first_seen_utc": "2026-06-06T00:00:00Z",
+  "last_seen_utc": "2026-06-06T00:02:00Z",
+  "occurrences": 3,
+  "alert_window": "3m",
+  "alert_value": "3 failed health checks",
+  "alert_threshold": "3 failures over 3m",
+  "route_or_workflow": "/api/health",
+  "correlation_ids": [
+    "uptime-kuma:localrag-test-health:2026-06-06T00:00:00Z"
+  ],
+  "model_name": "n/a",
+  "embedding_model": "intfloat/multilingual-e5-large",
+  "index_status": "n/a",
+  "indexed_file_count": "n/a",
+  "privacy_check": {
+    "raw_question_text_included": false,
+    "raw_answer_text_included": false,
+    "source_passages_included": false,
+    "raw_filesystem_paths_included": false,
+    "private_claim_or_security_claim_reviewed": "n/a"
+  }
+}

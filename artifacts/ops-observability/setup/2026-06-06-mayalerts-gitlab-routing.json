@@ -1,0 +1,179 @@
+{
+  "artifact_type": "mayalerts_gitlab_routing_config",
+  "artifact_version": "1.0",
+  "project": "LocalRAG",
+  "track": "ops-observability",
+  "stage": "setup",
+  "gitlab_issue": "#43",
+  "date": "2026-06-06",
+  "status": "ready-for-import",
+  "service_name": "localrag",
+  "source_contract": "artifacts/ops-observability/design/2026-06-06-observability-contract-alert-policy.md",
+  "gitlab": {
+    "api_url": "https://lab.it360.ru/api/v4",
+    "project_path": "myprojects/localrag",
+    "project_path_encoded": "myprojects%2Flocalrag",
+    "issue_create_endpoint": "/projects/myprojects%2Flocalrag/issues",
+    "token_variable": "GITLAB_API_TOKEN",
+    "do_not_push": true
+  },
+  "mayalerts_sources": [
+    {
+      "name": "localrag-graylog",
+      "type": "webhook",
+      "inbound_url_variable": "MAYALERTS_GRAYLOG_SOURCE_WEBHOOK_URL",
+      "shared_secret_variable": "MAYALERTS_GRAYLOG_SOURCE_SECRET",
+      "accepted_alerts": [
+        "localrag_service_error_5xx",
+        "localrag_health_down",
+        "localrag_index_build_failed",
+        "localrag_indexing_stuck",
+        "localrag_ask_error_rate_high",
+        "localrag_ollama_unavailable",
+        "localrag_default_model_missing",
+        "localrag_release_smoke_failed",
+        "localrag_observability_contract_violation"
+      ]
+    },
+    {
+      "name": "localrag-uptime-kuma",
+      "type": "webhook",
+      "inbound_url_variable": "MAYALERTS_UPTIME_KUMA_SOURCE_WEBHOOK_URL",
+      "shared_secret_variable": "MAYALERTS_UPTIME_KUMA_SOURCE_SECRET",
+      "accepted_alerts": [
+        "localrag_health_down",
+        "localrag_release_drift",
+        "localrag_ui_unavailable",
+        "localrag_release_smoke_failed"
+      ]
+    }
+  ],
+  "normalization": {
+    "required_fields": [
+      "service_name",
+      "app_env",
+      "app_release",
+      "alert_name",
+      "severity",
+      "dedupe_resource",
+      "timestamp_utc"
+    ],
+    "environment_aliases": {
+      "test": "staging",
+      "stage": "staging",
+      "production": "prod"
+    },
+    "severity_aliases": {
+      "critical": "p1",
+      "major": "p2",
+      "minor": "p3",
+      "info": "p4"
+    },
+    "privacy_drop_fields": [
+      "question",
+      "answer",
+      "source_passage",
+      "source_text",
+      "raw_path",
+      "cookie",
+      "authorization",
+      "prompt"
+    ]
+  },
+  "dedupe": {
+    "fingerprint_template": "service_name|app_env|alert_name|severity|dedupe_resource|app_release_major_minor",
+    "major_minor_rule": "Use the first two semver components before build metadata, except release_drift and release_smoke failures may include the full app_release in dedupe_resource.",
+    "update_existing_issue": true,
+    "reopen_closed_issue_days": {
+      "dev": 7,
+      "staging": 14,
+      "prod": 30
+    }
+  },
+  "n8n_intake": {
+    "workflow_name": "LocalRAG MayAlerts to GitLab intake",
+    "webhook_method": "POST",
+    "webhook_path": "/webhook/localrag/mayalerts/gitlab-intake",
+    "webhook_url_variable": "N8N_LOCALRAG_MAYALERTS_GITLAB_INTAKE_URL",
+    "shared_secret_header": "X-LocalRAG-Alert-Secret",
+    "shared_secret_variable": "N8N_LOCALRAG_MAYALERTS_GITLAB_INTAKE_SECRET",
+    "idempotency_header": "X-Alert-Fingerprint",
+    "steps": [
+      "Verify shared secret and reject unsigned requests.",
+      "Normalize environment and severity aliases.",
+      "Drop private payload fields before any logging.",
+      "Compute the MayAlerts fingerprint.",
+      "Search GitLab for an open issue with the same source::mayalerts label and fingerprint marker.",
+      "Update the existing issue when found; otherwise create a GitLab issue.",
+      "For prod, set confidential=true before sending the GitLab API request.",
+      "Return the GitLab issue IID and URL to MayAlerts."
+    ]
+  },
+  "gitlab_routes": {
+    "dev": {
+      "route_name": "mayalerts-localrag-dev",
+      "confidential": false,
+      "create_threshold": "3 occurrences in 24h unless p1 privacy/content leak",
+      "title_template": "[ALERT][{app_env}][{severity}][{service_name}] {summary}",
+      "labels": [
+        "area::observability",
+        "monitoring",
+        "source::mayalerts",
+        "alert::non-prod",
+        "env::dev",
+        "severity::{severity}",
+        "sdlc::triage"
+      ]
+    },
+    "staging": {
+      "route_name": "mayalerts-localrag-non-prod",
+      "confidential": false,
+      "create_threshold": "immediate for p1/p2; after 2 occurrences in 2h for p3",
+      "title_template": "[ALERT][{app_env}][{severity}][{service_name}] {summary}",
+      "labels": [
+        "area::observability",
+        "monitoring",
+        "source::mayalerts",
+        "alert::non-prod",
+        "env::staging",
+        "severity::{severity}",
+        "sdlc::triage"
+      ]
+    },
+    "prod": {
+      "route_name": "mayalerts-localrag-prod",
+      "confidential": true,
+      "create_threshold": "immediate for p1/p2; after 2 occurrences in 30m for p3",
+      "title_template": "[ALERT][{app_env}][{severity}][{service_name}] {summary}",
+      "labels": [
+        "area::observability",
+        "monitoring",
+        "source::mayalerts",
+        "alert::prod",
+        "env::prod",
+        "severity::{severity}",
+        "sdlc::triage"
+      ]
+    }
+  },
+  "issue_description_template_sections": [
+    "Alert",
+    "Current Evidence",
+    "Privacy Check",
+    "Suggested Triage",
+    "Resolution Notes"
+  ],
+  "verification": {
+    "dry_run_event": "artifacts/ops-observability/setup/fixtures/2026-06-06-mayalerts-dry-run-event.json",
+    "expected_gitlab_issue": "artifacts/ops-observability/setup/fixtures/2026-06-06-expected-gitlab-issue.json",
+    "validator": "scripts/validate_observability_setup.py",
+    "non_mutating_gitlab_check": "python3 scripts/validate_observability_setup.py --check-gitlab-api",
+    "live_webhook_check_requires": [
+      "MAYALERTS_GRAYLOG_SOURCE_WEBHOOK_URL",
+      "MAYALERTS_UPTIME_KUMA_SOURCE_WEBHOOK_URL",
+      "N8N_LOCALRAG_MAYALERTS_GITLAB_INTAKE_URL",
+      "N8N_LOCALRAG_MAYALERTS_GITLAB_INTAKE_SECRET",
+      "GITLAB_API_TOKEN"
+    ]
+  }
+}

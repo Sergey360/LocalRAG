@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import main
@@ -126,7 +127,20 @@ def test_meta_endpoint_matches_version_file():
     assert resp.status_code == 200
     payload = resp.json()
     expected = Path("VERSION").read_text(encoding="utf-8").strip()
+    expected_service_name = (
+        os.environ.get("SERVICE_NAME", "localrag").strip() or "localrag"
+    )
+    expected_app_env = os.environ.get("APP_ENV", "dev").strip() or "dev"
+    expected_app_release = os.environ.get("APP_RELEASE", "").strip() or expected
+    expected_app_instance_id = (
+        os.environ.get("APP_INSTANCE_ID", "").strip()
+        or f"{expected_service_name}-{expected_app_env}"
+    )
     assert payload["name"] == "LocalRAG"
+    assert payload["service_name"] == expected_service_name
+    assert payload["app_env"] == expected_app_env
+    assert payload["app_release"] == expected_app_release
+    assert payload["app_instance_id"] == expected_app_instance_id
     assert payload["version"] == expected
     assert payload["default_model"] == "qwen3.5:9b"
     assert payload["default_embedding_model"] == "intfloat/multilingual-e5-large"

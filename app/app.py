@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import importlib
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
@@ -188,6 +189,52 @@ SUPPORTED_EXTENSIONS = {
     ".yml",
     ".yaml",
 }
+_ollama_request_id_provider = None
+_ollama_request_observer = None
+
+
+def set_ollama_request_id_provider(provider) -> None:
+    global _ollama_request_id_provider
+    _ollama_request_id_provider = provider
+
+
+def set_ollama_request_observer(observer) -> None:
+    global _ollama_request_observer
+    _ollama_request_observer = observer
+
+
+def get_ollama_request_headers() -> dict[str, str] | None:
+    if _ollama_request_id_provider is None:
+        return None
+    try:
+        request_id = str(_ollama_request_id_provider() or "").strip()
+    except Exception:
+        request_id = ""
+    if not request_id:
+        return None
+    return {"X-Request-ID": request_id}
+
+
+def observe_ollama_request(
+    endpoint: str,
+    outcome: str,
+    duration_seconds: float,
+    *,
+    model_name: str = "",
+    error_type: str = "",
+) -> None:
+    if _ollama_request_observer is None:
+        return
+    try:
+        _ollama_request_observer(
+            endpoint,
+            outcome,
+            duration_seconds,
+            model_name=model_name,
+            error_type=error_type,
+        )
+    except Exception:
+        return
 
 # -------------------- i18n --------------------
 
@@ -2070,13 +2117,31 @@ def ollama_chat(
         role_prompt=role_prompt,
     )
     payload = build_ollama_generate_payload(model_name, prompt)
+    started = time.perf_counter()
+    outcome = "failure"
+    error_type = ""
     try:
-        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=300)
+        request_kwargs = {"json": payload, "timeout": 300}
+        request_headers = get_ollama_request_headers()
+        if request_headers:
+            request_kwargs["headers"] = request_headers
+        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", **request_kwargs)
         r.raise_for_status()
-        return r.json().get("response", "[No response from LLM]")
+        payload = r.json()
+        outcome = "success"
+        return payload.get("response", "[No response from LLM]")
     except Exception as exc:
+        error_type = type(exc).__name__
         logging.error("Ollama request error: %s", exc)
         return f"[Ollama request error: {exc}]"
+    finally:
+        observe_ollama_request(
+            "/api/generate",
+            outcome,
+            time.perf_counter() - started,
+            model_name=model_name,
+            error_type=error_type,
+        )
 
 
 def repair_answer_language(
@@ -2095,13 +2160,31 @@ def repair_answer_language(
         role_prompt=role_prompt,
     )
     payload = build_ollama_generate_payload(model_name, prompt)
+    started = time.perf_counter()
+    outcome = "failure"
+    error_type = ""
     try:
-        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=300)
+        request_kwargs = {"json": payload, "timeout": 300}
+        request_headers = get_ollama_request_headers()
+        if request_headers:
+            request_kwargs["headers"] = request_headers
+        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", **request_kwargs)
         r.raise_for_status()
-        return r.json().get("response", draft_answer)
+        payload = r.json()
+        outcome = "success"
+        return payload.get("response", draft_answer)
     except Exception as exc:
+        error_type = type(exc).__name__
         logging.error("Ollama repair error: %s", exc)
         return draft_answer
+    finally:
+        observe_ollama_request(
+            "/api/generate",
+            outcome,
+            time.perf_counter() - started,
+            model_name=model_name,
+            error_type=error_type,
+        )
 
 
 ROMAN_CLASS_MAP = {
@@ -2483,13 +2566,29 @@ def get_default_model(models: List[str] | None = None) -> str:
 
 
 def get_ollama_models() -> List[str]:
+    started = time.perf_counter()
+    outcome = "failure"
+    error_type = ""
     try:
-        r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=10)
+        r = requests.get(
+            f"{OLLAMA_BASE_URL}/api/tags",
+            headers=get_ollama_request_headers(),
+            timeout=10,
+        )
         r.raise_for_status()
         models = [m.get("name") for m in r.json().get("models", []) if m.get("name")]
+        outcome = "success"
     except Exception as exc:
+        error_type = type(exc).__name__
         logging.error("Failed to fetch Ollama models: %s", exc)
         return []
+    finally:
+        observe_ollama_request(
+            "/api/tags",
+            outcome,
+            time.perf_counter() - started,
+            error_type=error_type,
+        )
     return unique_preserve_order(models)
 
 

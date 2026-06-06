@@ -1,10 +1,27 @@
 <!DOCTYPE html>
-<html lang="{{ lang }}" dir="{{ 'rtl' if lang == 'he' else 'ltr' }}">
+<html lang="{{ seo.html_lang }}" dir="{{ seo.dir }}">
 <head>
     <meta charset="UTF-8">
-    <title>{{ t('app_title') }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ seo.title }}</title>
+    <meta name="description" content="{{ seo.description }}">
+    <meta name="robots" content="{{ seo.robots }}">
+    <link rel="canonical" href="{{ seo.canonical_url }}">
+    {% for alternate in seo.alternate_urls %}
+    <link rel="alternate" hreflang="{{ alternate.hreflang }}" href="{{ alternate.href }}">
+    {% endfor %}
+    <meta property="og:type" content="{{ seo.open_graph_type }}">
+    <meta property="og:title" content="{{ seo.open_graph_title }}">
+    <meta property="og:description" content="{{ seo.open_graph_description }}">
+    <meta property="og:url" content="{{ seo.open_graph_url }}">
+    <meta property="og:locale" content="{{ seo.open_graph_locale }}">
+    <meta property="og:image" content="{{ seo.open_graph_image }}">
+    <meta name="twitter:card" content="{{ seo.twitter_card }}">
+    <meta name="twitter:title" content="{{ seo.open_graph_title }}">
+    <meta name="twitter:description" content="{{ seo.open_graph_description }}">
     <link rel="icon" type="image/x-icon" href="{{ static_url('favicon.ico') }}">
     <link rel="stylesheet" href="{{ static_url('style.css') }}">
+    <script type="application/ld+json">{{ seo.schema | tojson }}</script>
     <script src="{{ static_url('js/htmx.min.js') }}" defer></script>
     <script src="{{ static_url('js/alert.js') }}" defer></script>
     <script src="{{ static_url('js/main.js') }}" defer></script>

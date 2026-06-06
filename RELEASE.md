@@ -11,6 +11,8 @@
 - Default answer model aligned to `qwen3.5:9b`.
 - App exposes runtime metadata via `GET /api/meta`.
 - App exposes JSON liveness endpoint via `GET /api/health`.
+- Root app UI emits localized SEO metadata, canonical URL, Open Graph tags, JSON-LD schema, and `X-Robots-Tag`.
+- App exposes `GET /robots.txt` and `GET /sitemap.xml`; indexing remains opt-in through `SEO_INDEX_APP`.
 - GitLab CI syntax-checks entrypoints before running tests.
 - Root start scripts are release-first and tested on Windows and WSL.
 
@@ -20,11 +22,13 @@
 2. Start the stack with release defaults, not a developer-specific `.env` override
 3. Verify `GET /api/health`
 4. Verify `GET /api/meta` reports `default_model=qwen3.5:9b`
-5. Open the UI and ask `Куда поехал Айболит?`
-6. Verify the answer starts with `Айболит поехал в Африку.`
-7. Switch answer role and verify the response updates
-8. Open settings and verify model manager responds
-9. Run the extended eval set and require a full pass for the release candidate
+5. Verify `GET /robots.txt` and `GET /sitemap.xml`
+6. Open the UI and verify canonical, robots, Open Graph, and JSON-LD tags are present
+7. Ask `Куда поехал Айболит?`
+8. Verify the answer starts with `Айболит поехал в Африку.`
+9. Switch answer role and verify the response updates
+10. Open settings and verify model manager responds
+11. Run the extended eval set and require a full pass for the release candidate
 
 Automated smoke:
 
