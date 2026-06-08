@@ -4,7 +4,6 @@ import os
 import re
 import threading
 import importlib
-import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
@@ -189,52 +188,6 @@ SUPPORTED_EXTENSIONS = {
     ".yml",
     ".yaml",
 }
-_ollama_request_id_provider = None
-_ollama_request_observer = None
-
-
-def set_ollama_request_id_provider(provider) -> None:
-    global _ollama_request_id_provider
-    _ollama_request_id_provider = provider
-
-
-def set_ollama_request_observer(observer) -> None:
-    global _ollama_request_observer
-    _ollama_request_observer = observer
-
-
-def get_ollama_request_headers() -> dict[str, str] | None:
-    if _ollama_request_id_provider is None:
-        return None
-    try:
-        request_id = str(_ollama_request_id_provider() or "").strip()
-    except Exception:
-        request_id = ""
-    if not request_id:
-        return None
-    return {"X-Request-ID": request_id}
-
-
-def observe_ollama_request(
-    endpoint: str,
-    outcome: str,
-    duration_seconds: float,
-    *,
-    model_name: str = "",
-    error_type: str = "",
-) -> None:
-    if _ollama_request_observer is None:
-        return
-    try:
-        _ollama_request_observer(
-            endpoint,
-            outcome,
-            duration_seconds,
-            model_name=model_name,
-            error_type=error_type,
-        )
-    except Exception:
-        return
 
 # -------------------- i18n --------------------
 
@@ -300,7 +253,6 @@ def save_runtime_state() -> None:
     payload = {
         "docs_path_display": _current_docs_path_display,
         "embedding_model": _current_embed_model_name,
-        "prepared_embedding_models": sorted(_prepared_embedding_models),
     }
     APP_STATE_FILE.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -314,11 +266,6 @@ _initial_docs_value = str(
 )
 DOCS_PATH, DOCS_PATH_DISPLAY = resolve_docs_paths(_initial_docs_value)
 _current_embed_model_name = str(_initial_state.get("embedding_model") or EMBED_MODEL_NAME).strip()
-_prepared_embedding_models = {
-    str(item).strip()
-    for item in (_initial_state.get("prepared_embedding_models") or [])
-    if str(item).strip()
-}
 _current_docs_path = DOCS_PATH
 _current_docs_path_display = DOCS_PATH_DISPLAY
 
@@ -351,10 +298,6 @@ def get_embedding_model_name() -> str:
 
 def get_default_embedding_model_name() -> str:
     return EMBED_MODEL_NAME
-
-
-def normalize_embedding_model_name(raw_value: str | None) -> str:
-    return str(raw_value or "").strip()
 
 
 def get_embedding_runtime_info() -> Dict[str, object]:
@@ -432,120 +375,6 @@ def clear_cached_embeddings() -> None:
     global _cached_embeddings
     with embeddings_lock:
         _cached_embeddings = None
-
-
-def remember_prepared_embedding_model(raw_value: str) -> str:
-    model_name = normalize_embedding_model_name(raw_value)
-    if not model_name:
-        raise ValueError("Embedding model name is required.")
-    _prepared_embedding_models.add(model_name)
-    save_runtime_state()
-    return model_name
-
-
-def _resolve_embedding_local_path(raw_value: str) -> Path | None:
-    candidate = normalize_embedding_model_name(raw_value)
-    if not candidate:
-        return None
-    path = Path(candidate).expanduser()
-    if path.exists():
-        return path.resolve()
-    return None
-
-
-def _directory_has_embedding_artifacts(path: Path) -> bool:
-    markers = (
-        "modules.json",
-        "sentence_bert_config.json",
-        "config_sentence_transformers.json",
-        "1_Pooling/config.json",
-    )
-    return any((path / marker).exists() for marker in markers)
-
-
-def _scan_cached_embedding_models() -> set[str]:
-    try:
-        from huggingface_hub import scan_cache_dir
-
-        cache_info = scan_cache_dir()
-    except Exception:
-        return set()
-
-    cached: set[str] = set()
-    for repo in getattr(cache_info, "repos", []) or []:
-        repo_id = str(getattr(repo, "repo_id", "") or "").strip()
-        if not repo_id:
-            continue
-        for revision in getattr(repo, "revisions", []) or []:
-            snapshot_path = getattr(revision, "snapshot_path", None)
-            if snapshot_path and _directory_has_embedding_artifacts(Path(snapshot_path)):
-                cached.add(repo_id)
-                break
-    return cached
-
-
-def is_embedding_model_available_locally(raw_value: str) -> bool:
-    model_name = normalize_embedding_model_name(raw_value)
-    if not model_name:
-        return False
-    if _resolve_embedding_local_path(model_name):
-        return True
-    if model_name in _prepared_embedding_models:
-        return True
-    return model_name in _scan_cached_embedding_models()
-
-
-def list_available_embedding_models() -> list[dict[str, str]]:
-    names = set(_prepared_embedding_models)
-    names.update(_scan_cached_embedding_models())
-
-    current_model = normalize_embedding_model_name(get_embedding_model_name())
-    if current_model and is_embedding_model_available_locally(current_model):
-        names.add(current_model)
-
-    available: list[dict[str, str]] = []
-    for model_name in sorted(names, key=str.lower):
-        local_path = _resolve_embedding_local_path(model_name)
-        available.append(
-            {
-                "name": model_name,
-                "source": "local_path" if local_path else "cache",
-                "path": str(local_path) if local_path else "",
-            }
-        )
-    return available
-
-
-def _build_embeddings_client(model_name: str) -> HuggingFaceEmbeddings:
-    import torch
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    return HuggingFaceEmbeddings(
-        model_name=model_name,
-        model_kwargs={"device": device},
-    )
-
-
-def prepare_embedding_model_artifact(raw_value: str) -> dict[str, object]:
-    global _cached_embeddings
-
-    model_name = normalize_embedding_model_name(raw_value)
-    if not model_name:
-        raise ValueError("Embedding model name is required.")
-
-    embeddings = _build_embeddings_client(model_name)
-    vector = embeddings.embed_query("embedding health check")
-    remember_prepared_embedding_model(model_name)
-
-    if model_name == get_embedding_model_name():
-        with embeddings_lock:
-            _cached_embeddings = embeddings
-
-    return {
-        "model": model_name,
-        "vector_size": len(vector) if hasattr(vector, "__len__") else 0,
-        "model_device": get_loaded_embedding_device(),
-    }
 
 
 def set_docs_path(raw_value: str) -> str:
@@ -1653,7 +1482,13 @@ def get_embeddings():
             return _cached_embeddings
     current_embedding_model = get_embedding_model_name()
     try:
-        embeddings = _build_embeddings_client(current_embedding_model)
+        import torch
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        embeddings = HuggingFaceEmbeddings(
+            model_name=current_embedding_model,
+            model_kwargs={"device": device},
+        )
     except Exception as exc:
         logging.exception("Failed to load embeddings: %s", exc)
         raise RuntimeError(
@@ -1661,7 +1496,6 @@ def get_embeddings():
             "Download it before running (for offline use run once with internet) "
             "or set EMBED_MODEL (or EMBEDDINGS_MODEL_NAME) to a local path."
         ) from exc
-    remember_prepared_embedding_model(current_embedding_model)
     with embeddings_lock:
         _cached_embeddings = embeddings
     return embeddings
@@ -2117,31 +1951,13 @@ def ollama_chat(
         role_prompt=role_prompt,
     )
     payload = build_ollama_generate_payload(model_name, prompt)
-    started = time.perf_counter()
-    outcome = "failure"
-    error_type = ""
     try:
-        request_kwargs = {"json": payload, "timeout": 300}
-        request_headers = get_ollama_request_headers()
-        if request_headers:
-            request_kwargs["headers"] = request_headers
-        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", **request_kwargs)
+        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=300)
         r.raise_for_status()
-        payload = r.json()
-        outcome = "success"
-        return payload.get("response", "[No response from LLM]")
+        return r.json().get("response", "[No response from LLM]")
     except Exception as exc:
-        error_type = type(exc).__name__
         logging.error("Ollama request error: %s", exc)
         return f"[Ollama request error: {exc}]"
-    finally:
-        observe_ollama_request(
-            "/api/generate",
-            outcome,
-            time.perf_counter() - started,
-            model_name=model_name,
-            error_type=error_type,
-        )
 
 
 def repair_answer_language(
@@ -2160,31 +1976,13 @@ def repair_answer_language(
         role_prompt=role_prompt,
     )
     payload = build_ollama_generate_payload(model_name, prompt)
-    started = time.perf_counter()
-    outcome = "failure"
-    error_type = ""
     try:
-        request_kwargs = {"json": payload, "timeout": 300}
-        request_headers = get_ollama_request_headers()
-        if request_headers:
-            request_kwargs["headers"] = request_headers
-        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", **request_kwargs)
+        r = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=300)
         r.raise_for_status()
-        payload = r.json()
-        outcome = "success"
-        return payload.get("response", draft_answer)
+        return r.json().get("response", draft_answer)
     except Exception as exc:
-        error_type = type(exc).__name__
         logging.error("Ollama repair error: %s", exc)
         return draft_answer
-    finally:
-        observe_ollama_request(
-            "/api/generate",
-            outcome,
-            time.perf_counter() - started,
-            model_name=model_name,
-            error_type=error_type,
-        )
 
 
 ROMAN_CLASS_MAP = {
@@ -2566,29 +2364,13 @@ def get_default_model(models: List[str] | None = None) -> str:
 
 
 def get_ollama_models() -> List[str]:
-    started = time.perf_counter()
-    outcome = "failure"
-    error_type = ""
     try:
-        r = requests.get(
-            f"{OLLAMA_BASE_URL}/api/tags",
-            headers=get_ollama_request_headers(),
-            timeout=10,
-        )
+        r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=10)
         r.raise_for_status()
         models = [m.get("name") for m in r.json().get("models", []) if m.get("name")]
-        outcome = "success"
     except Exception as exc:
-        error_type = type(exc).__name__
         logging.error("Failed to fetch Ollama models: %s", exc)
         return []
-    finally:
-        observe_ollama_request(
-            "/api/tags",
-            outcome,
-            time.perf_counter() - started,
-            error_type=error_type,
-        )
     return unique_preserve_order(models)
 
 

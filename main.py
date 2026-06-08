@@ -1,28 +1,22 @@
 import sys
-import contextvars
-import hashlib
 import json
 import html
-import inspect
 import logging
 import asyncio
 import os
 import re
-import socket
 import threading
-import time
 import uuid
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 import requests
 import uvicorn
 from fastapi import BackgroundTasks, Body, Cookie, FastAPI, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -32,7 +26,6 @@ from app import (  # noqa: E402
     OLLAMA_BASE_URL,
     get_default_model,
     get_default_embedding_model_name,
-    is_embedding_model_available_locally,
     get_default_docs_path_display,
     get_docs_path_display,
     get_embedding_model_name,
@@ -40,10 +33,7 @@ from app import (  # noqa: E402
     get_index_status,
     get_index_status_meta,
     get_indexed_file_count,
-    list_available_embedding_models,
-    normalize_embedding_model_name,
     get_ollama_models,
-    prepare_embedding_model_artifact,
     get_retrieval_debug_snapshot,
     list_browsable_directories,
     load_persisted_index,
@@ -51,8 +41,6 @@ from app import (  # noqa: E402
     rebuild_index,
     set_embedding_model,
     set_docs_path,
-    set_ollama_request_id_provider,
-    set_ollama_request_observer,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -106,28 +94,9 @@ def load_app_version() -> str:
 APP_NAME = "LocalRAG"
 APP_VERSION = load_app_version()
 BUILD_DATE_UTC = os.environ.get("BUILD_DATE_UTC", "").strip()
-SERVICE_NAME = os.environ.get("SERVICE_NAME", "localrag").strip() or "localrag"
-APP_ENV = os.environ.get("APP_ENV", "dev").strip() or "dev"
-APP_RELEASE = os.environ.get("APP_RELEASE", "").strip() or APP_VERSION
-APP_INSTANCE_ID = (
-    os.environ.get("APP_INSTANCE_ID", "").strip()
-    or f"{SERVICE_NAME}-{APP_ENV}"
-)
-SEO_PUBLIC_BASE_URL = (
-    os.environ.get("SEO_PUBLIC_BASE_URL", "https://localrag.dev").strip().rstrip("/")
-    or "https://localrag.dev"
-)
-SEO_INDEX_APP = os.environ.get("SEO_INDEX_APP", "").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-SEO_LAST_VERIFIED_AT = "2026-06-06"
 DEFAULT_ROLE_STYLE = "balanced"
 MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._:/-]+$")
 ROLE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:/=-]{1,128}$")
 PLACEHOLDER_TRANSLATION_PATTERNS = {
     "ru": re.compile(r"^[\?\s:;,\.\-\(\)\{\}\[\]!/0-9A-Za-z]+$"),
     "zh": re.compile(r"^[\?\s:;,\.\-\(\)\{\}\[\]!/0-9A-Za-z]+$"),
@@ -139,470 +108,6 @@ CONTEXT_HEADER_LINES_RE = re.compile(
     re.IGNORECASE,
 )
 CONTEXT_HEADER_LINE_RE = re.compile(r"\bline\s+(?P<line>\d+)\b", re.IGNORECASE)
-CORRELATION_ID_HEADER = "X-Request-ID"
-CURRENT_CORRELATION_ID: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "localrag_correlation_id",
-    default="",
-)
-STRUCTURED_LOGGER = logging.getLogger("localrag.observability")
-INDEX_STATUS_VALUES = (
-    "loading",
-    "ready_loaded",
-    "indexing",
-    "build_failed",
-    "ready_ask",
-    "no_documents",
-    "saved_failed",
-    "changes_detected",
-)
-HTTP_DURATION_BUCKETS = (
-    0.005,
-    0.01,
-    0.025,
-    0.05,
-    0.1,
-    0.25,
-    0.5,
-    1.0,
-    2.5,
-    5.0,
-    10.0,
-    30.0,
-    60.0,
-    120.0,
-    300.0,
-)
-CONTEXT_CHUNK_BUCKETS = (0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0)
-METRIC_HELP = {
-    "localrag_http_requests_total": (
-        "counter",
-        "HTTP requests by route, method, and status class.",
-    ),
-    "localrag_http_request_duration_seconds": (
-        "histogram",
-        "HTTP request duration in seconds.",
-    ),
-    "localrag_rag_queries_total": (
-        "counter",
-        "RAG ask workflow attempts by outcome and selected model settings.",
-    ),
-    "localrag_rag_query_duration_seconds": (
-        "histogram",
-        "End-to-end RAG ask workflow duration in seconds.",
-    ),
-    "localrag_retrieval_context_chunks": (
-        "histogram",
-        "Returned retrieval context chunk count for successful RAG responses.",
-    ),
-    "localrag_ollama_requests_total": (
-        "counter",
-        "Ollama dependency calls by endpoint, outcome, and model.",
-    ),
-    "localrag_ollama_request_duration_seconds": (
-        "histogram",
-        "Ollama dependency call duration in seconds.",
-    ),
-    "localrag_index_status": (
-        "gauge",
-        "One-hot gauge for the current LocalRAG index status.",
-    ),
-    "localrag_indexed_file_count": (
-        "gauge",
-        "Number of source files currently represented in the index.",
-    ),
-    "localrag_reindex_jobs_total": (
-        "counter",
-        "Reindex jobs by outcome and trigger.",
-    ),
-    "localrag_reindex_duration_seconds": (
-        "histogram",
-        "Reindex job duration in seconds.",
-    ),
-    "localrag_model_pull_active": (
-        "gauge",
-        "Whether an Ollama model pull is currently active.",
-    ),
-    "localrag_model_pull_failures_total": (
-        "counter",
-        "Failed Ollama model pull attempts.",
-    ),
-    "localrag_embedding_prepare_failures_total": (
-        "counter",
-        "Failed embedding model preparation attempts.",
-    ),
-    "localrag_observability_contract_violations_total": (
-        "counter",
-        "Observed missing telemetry fields or unsafe telemetry payloads.",
-    ),
-}
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def get_current_correlation_id() -> str:
-    return CURRENT_CORRELATION_ID.get("")
-
-
-set_ollama_request_id_provider(get_current_correlation_id)
-
-
-def normalize_correlation_id(raw_value: str | None) -> str:
-    candidate = str(raw_value or "").strip()
-    if candidate and REQUEST_ID_PATTERN.match(candidate):
-        return candidate
-    return str(uuid.uuid4())
-
-
-def metric_label_value(value: Any, fallback: str = "unknown") -> str:
-    text = str(value if value is not None else "").strip()
-    if not text:
-        return fallback
-    text = " ".join(text.split())
-    return text[:120]
-
-
-def base_metric_labels(extra: dict[str, Any] | None = None) -> dict[str, str]:
-    labels = {
-        "service_name": SERVICE_NAME,
-        "app_env": APP_ENV,
-        "app_release": APP_RELEASE,
-    }
-    if extra:
-        labels.update({key: metric_label_value(value) for key, value in extra.items()})
-    return labels
-
-
-def prometheus_escape(value: str) -> str:
-    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
-
-
-def format_prometheus_labels(labels: tuple[tuple[str, str], ...]) -> str:
-    if not labels:
-        return ""
-    return "{" + ",".join(
-        f'{key}="{prometheus_escape(value)}"' for key, value in labels
-    ) + "}"
-
-
-class MetricsRegistry:
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._counters: dict[str, dict[tuple[tuple[str, str], ...], float]] = {}
-        self._gauges: dict[str, dict[tuple[tuple[str, str], ...], float]] = {}
-        self._histograms: dict[
-            str,
-            dict[tuple[tuple[str, str], ...], dict[str, Any]],
-        ] = {}
-
-    def _label_key(self, labels: dict[str, Any] | None) -> tuple[tuple[str, str], ...]:
-        safe_labels = labels or {}
-        return tuple(
-            sorted((str(key), metric_label_value(value)) for key, value in safe_labels.items())
-        )
-
-    def inc_counter(
-        self,
-        name: str,
-        labels: dict[str, Any] | None = None,
-        amount: float = 1.0,
-    ) -> None:
-        key = self._label_key(labels)
-        with self._lock:
-            metric = self._counters.setdefault(name, {})
-            metric[key] = metric.get(key, 0.0) + float(amount)
-
-    def set_gauge(
-        self,
-        name: str,
-        value: float,
-        labels: dict[str, Any] | None = None,
-    ) -> None:
-        key = self._label_key(labels)
-        with self._lock:
-            self._gauges.setdefault(name, {})[key] = float(value)
-
-    def observe_histogram(
-        self,
-        name: str,
-        value: float,
-        labels: dict[str, Any] | None = None,
-        buckets: tuple[float, ...] = HTTP_DURATION_BUCKETS,
-    ) -> None:
-        key = self._label_key(labels)
-        safe_value = max(0.0, float(value))
-        with self._lock:
-            metric = self._histograms.setdefault(name, {})
-            data = metric.setdefault(
-                key,
-                {
-                    "buckets": {bucket: 0 for bucket in buckets},
-                    "inf": 0,
-                    "sum": 0.0,
-                    "count": 0,
-                },
-            )
-            for bucket in data["buckets"]:
-                if safe_value <= bucket:
-                    data["buckets"][bucket] += 1
-            data["inf"] += 1
-            data["sum"] += safe_value
-            data["count"] += 1
-
-    def render_prometheus(self) -> str:
-        with self._lock:
-            counters = {
-                name: dict(series)
-                for name, series in self._counters.items()
-            }
-            gauges = {
-                name: dict(series)
-                for name, series in self._gauges.items()
-            }
-            histograms = {
-                name: {
-                    labels: {
-                        "buckets": dict(data["buckets"]),
-                        "inf": data["inf"],
-                        "sum": data["sum"],
-                        "count": data["count"],
-                    }
-                    for labels, data in series.items()
-                }
-                for name, series in self._histograms.items()
-            }
-
-        lines: list[str] = []
-        emitted: set[str] = set()
-
-        def emit_header(name: str) -> None:
-            if name in emitted:
-                return
-            metric_type, help_text = METRIC_HELP.get(
-                name,
-                ("gauge", f"{name} metric."),
-            )
-            lines.append(f"# HELP {name} {help_text}")
-            lines.append(f"# TYPE {name} {metric_type}")
-            emitted.add(name)
-
-        for name in sorted(counters):
-            emit_header(name)
-            for labels, value in sorted(counters[name].items()):
-                lines.append(f"{name}{format_prometheus_labels(labels)} {value:g}")
-
-        for name in sorted(gauges):
-            emit_header(name)
-            for labels, value in sorted(gauges[name].items()):
-                lines.append(f"{name}{format_prometheus_labels(labels)} {value:g}")
-
-        for name in sorted(histograms):
-            emit_header(name)
-            for labels, data in sorted(histograms[name].items()):
-                for bucket, value in sorted(data["buckets"].items()):
-                    bucket_labels = tuple(sorted(labels + (("le", f"{bucket:g}"),)))
-                    lines.append(
-                        f"{name}_bucket{format_prometheus_labels(bucket_labels)} {value:g}"
-                    )
-                inf_labels = tuple(sorted(labels + (("le", "+Inf"),)))
-                lines.append(
-                    f"{name}_bucket{format_prometheus_labels(inf_labels)} {data['inf']:g}"
-                )
-                lines.append(f"{name}_count{format_prometheus_labels(labels)} {data['count']:g}")
-                lines.append(f"{name}_sum{format_prometheus_labels(labels)} {data['sum']:g}")
-
-        return "\n".join(lines) + "\n"
-
-
-METRICS = MetricsRegistry()
-
-
-def hash_private_value(value: str | None) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    digest = hashlib.sha256(
-        f"{SERVICE_NAME}|{APP_ENV}|{text}".encode("utf-8", errors="ignore")
-    ).hexdigest()
-    return digest[:16]
-
-
-def user_agent_family(user_agent: str | None) -> str:
-    value = str(user_agent or "").lower()
-    if "pytest" in value or "testclient" in value:
-        return "testclient"
-    if "chrome" in value:
-        return "chrome"
-    if "firefox" in value:
-        return "firefox"
-    if "safari" in value:
-        return "safari"
-    if "curl" in value:
-        return "curl"
-    if "python" in value:
-        return "python"
-    return "unknown"
-
-
-def status_class(status_code: int) -> str:
-    try:
-        code = int(status_code)
-    except Exception:
-        return "unknown"
-    return f"{code // 100}xx"
-
-
-def get_route_template(request: Request) -> str:
-    route = request.scope.get("route")
-    path = getattr(route, "path", "")
-    if path:
-        return str(path)
-    return str(request.url.path or "unknown")
-
-
-def count_context_chunks(ctx_text: str) -> int:
-    return len([chunk for chunk in str(ctx_text or "").split("\n---\n") if chunk.strip()])
-
-
-def build_structured_log_payload(
-    *,
-    event_name: str,
-    event_domain: str,
-    event_outcome: str,
-    severity: str,
-    message: str,
-    correlation_id: str | None = None,
-    **fields: Any,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "service_name": SERVICE_NAME,
-        "app_env": APP_ENV,
-        "app_release": APP_RELEASE,
-        "app_version": APP_VERSION,
-        "app_instance_id": APP_INSTANCE_ID,
-        "correlation_id": correlation_id or get_current_correlation_id() or str(uuid.uuid4()),
-        "event_name": event_name,
-        "event_domain": event_domain,
-        "event_outcome": event_outcome,
-        "severity": severity,
-        "message": message,
-        "timestamp_utc": utc_now_iso(),
-        "host": socket.gethostname(),
-    }
-    for key, value in fields.items():
-        if value is None:
-            continue
-        if isinstance(value, (str, int, float, bool)):
-            payload[key] = value
-        else:
-            payload[key] = str(value)
-    return payload
-
-
-def log_structured_event(
-    event_name: str,
-    event_domain: str,
-    event_outcome: str,
-    *,
-    severity: str = "info",
-    message: str = "",
-    correlation_id: str | None = None,
-    **fields: Any,
-) -> None:
-    payload = build_structured_log_payload(
-        event_name=event_name,
-        event_domain=event_domain,
-        event_outcome=event_outcome,
-        severity=severity,
-        message=message or event_name,
-        correlation_id=correlation_id,
-        **fields,
-    )
-    missing = [
-        key
-        for key in (
-            "service_name",
-            "app_env",
-            "app_release",
-            "correlation_id",
-            "event_name",
-            "event_domain",
-            "event_outcome",
-            "severity",
-            "timestamp_utc",
-            "host",
-        )
-        if not payload.get(key)
-    ]
-    if missing:
-        METRICS.inc_counter(
-            "localrag_observability_contract_violations_total",
-            base_metric_labels({"field": ",".join(missing)}),
-        )
-    level = getattr(logging, severity.upper(), logging.INFO)
-    STRUCTURED_LOGGER.log(level, json.dumps(payload, ensure_ascii=False, sort_keys=True))
-
-
-def record_ollama_request(
-    endpoint: str,
-    outcome: str,
-    duration_seconds: float,
-    *,
-    model_name: str = "",
-    correlation_id: str | None = None,
-    error_type: str = "",
-) -> None:
-    labels = base_metric_labels(
-        {
-            "endpoint": endpoint,
-            "outcome": outcome,
-            "model_name": model_name or "none",
-        }
-    )
-    METRICS.inc_counter("localrag_ollama_requests_total", labels)
-    METRICS.observe_histogram(
-        "localrag_ollama_request_duration_seconds",
-        duration_seconds,
-        base_metric_labels({"endpoint": endpoint, "model_name": model_name or "none"}),
-    )
-    log_structured_event(
-        "ollama_request_completed",
-        "ollama",
-        outcome,
-        severity="error" if outcome == "failure" else "info",
-        message="Ollama request completed",
-        correlation_id=correlation_id,
-        endpoint=endpoint,
-        model_name=model_name or "none",
-        duration_ms=int(duration_seconds * 1000),
-        error_type=error_type,
-    )
-
-
-set_ollama_request_observer(record_ollama_request)
-
-
-def refresh_runtime_metrics() -> None:
-    code, _ = get_index_status_meta()
-    for status in INDEX_STATUS_VALUES:
-        METRICS.set_gauge(
-            "localrag_index_status",
-            1.0 if code == status else 0.0,
-            base_metric_labels({"status": status}),
-        )
-    METRICS.set_gauge(
-        "localrag_indexed_file_count",
-        float(get_indexed_file_count()),
-        base_metric_labels(),
-    )
-    pull_state = get_model_pull_state()
-    model_name = str(pull_state.get("model") or "none")
-    METRICS.set_gauge(
-        "localrag_model_pull_active",
-        1.0 if pull_state.get("active") else 0.0,
-        base_metric_labels({"model_name": model_name}),
-    )
 RECOMMENDED_MODEL_CATALOG = [
     {
         "name": "qwen3.5:9b",
@@ -626,18 +131,8 @@ RECOMMENDED_MODEL_CATALOG = [
     },
 ]
 RECOMMENDED_EMBEDDING_MODEL_CATALOG = [
-    {
-        "name": "intfloat/multilingual-e5-large",
-        "summary_key": "embedding_model_catalog_e5_large",
-    },
-    {
-        "name": "BAAI/bge-m3",
-        "summary_key": "embedding_model_catalog_bge_m3",
-    },
-    {
-        "name": "Alibaba-NLP/gte-multilingual-base",
-        "summary_key": "embedding_model_catalog_gte_multilingual_base",
-    },
+    "intfloat/multilingual-e5-large",
+    "BAAI/bge-m3",
 ]
 ROLE_IMAGE_LIBRARY = [
     {"value": "analyst", "path": "roles/analyst.png"},
@@ -838,58 +333,6 @@ _index_bootstrap_lock = threading.Lock()
 _index_bootstrap_done = False
 
 
-def run_reindex_job(
-    *,
-    trigger: str,
-    correlation_id: str | None = None,
-    job_id: str | None = None,
-) -> str:
-    resolved_correlation_id = correlation_id or get_current_correlation_id() or str(uuid.uuid4())
-    resolved_job_id = job_id or str(uuid.uuid4())
-    token = CURRENT_CORRELATION_ID.set(resolved_correlation_id)
-    started = time.perf_counter()
-    outcome = "success"
-    error_type = ""
-    result = ""
-    try:
-        result = rebuild_index()
-        code, _ = get_index_status_meta()
-        if code in {"build_failed", "saved_failed"}:
-            outcome = "failure"
-        return result
-    except Exception as exc:  # noqa: BLE001
-        outcome = "failure"
-        error_type = type(exc).__name__
-        raise
-    finally:
-        duration_seconds = time.perf_counter() - started
-        code, _ = get_index_status_meta()
-        METRICS.inc_counter(
-            "localrag_reindex_jobs_total",
-            base_metric_labels({"outcome": outcome, "trigger": trigger}),
-        )
-        METRICS.observe_histogram(
-            "localrag_reindex_duration_seconds",
-            duration_seconds,
-            base_metric_labels({"trigger": trigger}),
-        )
-        log_structured_event(
-            "reindex_job_completed",
-            "index",
-            outcome,
-            severity="error" if outcome == "failure" else "info",
-            message="Reindex job completed",
-            correlation_id=resolved_correlation_id,
-            job_id=resolved_job_id,
-            trigger=trigger,
-            index_status=code,
-            indexed_file_count=get_indexed_file_count(),
-            duration_ms=int(duration_seconds * 1000),
-            error_type=error_type,
-        )
-        CURRENT_CORRELATION_ID.reset(token)
-
-
 def ensure_index_ready_on_startup() -> None:
     global _index_bootstrap_done
     if _index_bootstrap_done:
@@ -904,35 +347,12 @@ def ensure_index_ready_on_startup() -> None:
             "on",
         }:
             logging.info("Skipping index bootstrap due to SKIP_INDEX_BOOTSTRAP")
-            log_structured_event(
-                "startup_index_bootstrap_skipped",
-                "index",
-                "skipped",
-                severity="info",
-                message="Startup index bootstrap skipped",
-                correlation_id=f"startup:{APP_INSTANCE_ID}",
-                trigger="startup",
-            )
             _index_bootstrap_done = True
             return
         if load_persisted_index():
             logging.info("Loaded persisted index on startup")
-            log_structured_event(
-                "startup_index_bootstrap_completed",
-                "index",
-                "success",
-                severity="info",
-                message="Loaded persisted index on startup",
-                correlation_id=f"startup:{APP_INSTANCE_ID}",
-                trigger="startup",
-                index_status=get_index_status_meta()[0],
-                indexed_file_count=get_indexed_file_count(),
-            )
         else:
-            run_reindex_job(
-                trigger="startup",
-                correlation_id=f"startup:{APP_INSTANCE_ID}",
-            )
+            rebuild_index()
             logging.info("Rebuilt index on startup")
         _index_bootstrap_done = True
 
@@ -960,81 +380,6 @@ if APP_STATIC_DIR.exists():
         StaticFiles(directory=str(APP_STATIC_DIR)),
         name="app-static",
     )
-
-
-@app.middleware("http")
-async def observability_middleware(request: Request, call_next):
-    correlation_id = normalize_correlation_id(
-        request.headers.get(CORRELATION_ID_HEADER)
-    )
-    token = CURRENT_CORRELATION_ID.set(correlation_id)
-    started = time.perf_counter()
-    status_code = 500
-    outcome = "failure"
-    error_type = ""
-    response: Response | None = None
-    try:
-        response = await call_next(request)
-        status_code = int(response.status_code)
-        if status_code < 400:
-            outcome = "success"
-        elif status_code < 500:
-            outcome = "validation_error"
-        else:
-            outcome = "failure"
-    except Exception as exc:  # noqa: BLE001
-        error_type = type(exc).__name__
-        logging.exception("Unhandled HTTP request exception")
-        response = JSONResponse(
-            {"ok": False, "message": "Internal server error"},
-            status_code=status_code,
-        )
-    finally:
-        duration_seconds = time.perf_counter() - started
-        route = get_route_template(request)
-        status_class_value = status_class(status_code)
-        METRICS.inc_counter(
-            "localrag_http_requests_total",
-            base_metric_labels(
-                {
-                    "route": route,
-                    "method": request.method,
-                    "status_class": status_class_value,
-                }
-            ),
-        )
-        METRICS.observe_histogram(
-            "localrag_http_request_duration_seconds",
-            duration_seconds,
-            base_metric_labels({"route": route, "method": request.method}),
-        )
-        log_structured_event(
-            "http_request_completed",
-            "http",
-            outcome,
-            severity="error" if status_code >= 500 else "info",
-            message="HTTP request completed",
-            correlation_id=correlation_id,
-            http_method=request.method,
-            http_route=route,
-            http_status_code=status_code,
-            http_status_class=status_class_value,
-            duration_ms=int(duration_seconds * 1000),
-            client_ip_hash=hash_private_value(
-                request.client.host if request.client else ""
-            ),
-            user_agent_family=user_agent_family(request.headers.get("user-agent")),
-            lang=normalize_lang(
-                request.cookies.get("lang") or request.query_params.get("lang")
-            ),
-            error_type=error_type,
-        )
-        if response is not None:
-            response.headers[CORRELATION_ID_HEADER] = correlation_id
-        CURRENT_CORRELATION_ID.reset(token)
-    return response
-
-
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 STATIC_VERSION = os.environ.get("STATIC_VERSION")
 HISTORY_COOKIE_NAME = "localrag_session_id"
@@ -1084,15 +429,6 @@ _model_pull_state: dict[str, Any] = {
     "status": "idle",
     "completed": None,
     "total": None,
-    "error": "",
-    "started_at": None,
-    "finished_at": None,
-}
-_embedding_model_pull_lock = threading.Lock()
-_embedding_model_pull_state: dict[str, Any] = {
-    "active": False,
-    "model": "",
-    "status": "idle",
     "error": "",
     "started_at": None,
     "finished_at": None,
@@ -1159,10 +495,6 @@ def get_app_meta() -> dict[str, Any]:
     workspace_files_path = str((BASE_DIR / "files").resolve())
     meta: dict[str, Any] = {
         "name": APP_NAME,
-        "service_name": SERVICE_NAME,
-        "app_env": APP_ENV,
-        "app_release": APP_RELEASE,
-        "app_instance_id": APP_INSTANCE_ID,
         "version": APP_VERSION,
         "author_name": "Sergey360",
         "author_url": "https://github.com/Sergey360",
@@ -1182,190 +514,6 @@ def get_app_meta() -> dict[str, Any]:
     if BUILD_DATE_UTC:
         meta["build_date_utc"] = BUILD_DATE_UTC
     return meta
-
-
-SEO_LOCALE_META = {
-    "en": {
-        "html_lang": "en",
-        "og_locale": "en_US",
-        "title": "Local AI Search for Private Documents - LocalRAG",
-        "description": (
-            "Ask grounded questions over PDFs, notes, tables, and code with "
-            "local RAG on Ollama, then inspect the source passages behind each answer."
-        ),
-    },
-    "ru": {
-        "html_lang": "ru",
-        "og_locale": "ru_RU",
-        "title": "Локальный ИИ-поиск по документам - LocalRAG",
-        "description": (
-            "Задавайте вопросы по PDF, заметкам, таблицам и коду через локальный "
-            "RAG на Ollama. Проверяйте ответы по найденным фрагментам источников."
-        ),
-    },
-    "nl": {
-        "html_lang": "nl",
-        "og_locale": "nl_NL",
-        "title": "Lokale AI-zoekfunctie voor prive documenten - LocalRAG",
-        "description": (
-            "Stel vragen over PDF's, notities, tabellen en code met lokale RAG op "
-            "Ollama en controleer antwoorden aan de hand van gevonden bronfragmenten."
-        ),
-    },
-    "zh": {
-        "html_lang": "zh-CN",
-        "og_locale": "zh_CN",
-        "title": "本地私有文档 AI 搜索 - LocalRAG",
-        "description": (
-            "用基于 Ollama 的本地 RAG 询问 PDF、笔记、表格和代码，并查看支撑答案的来源片段。"
-        ),
-    },
-    "he": {
-        "html_lang": "he",
-        "og_locale": "he_IL",
-        "title": "חיפוש AI מקומי במסמכים פרטיים - LocalRAG",
-        "description": (
-            "שאלו שאלות על PDF, הערות, טבלאות וקוד באמצעות RAG מקומי עם Ollama, "
-            "ובדקו את קטעי המקור שעליהם מבוססת התשובה."
-        ),
-    },
-}
-
-SEO_APP_CLAIM_STATUSES = {
-    "local_first_document_workflow": "implemented",
-    "source_provenance_where_available": "implemented",
-    "supported_formats": "implemented",
-    "multilingual_ui": "implemented",
-    "separate_answer_language": "implemented",
-    "ollama_model_control": "implemented",
-    "retrieval_quality_checks": "implemented",
-    "ocr_heavy_pdf_quality": "implemented_with_limitation",
-}
-
-SEO_APP_FEATURE_LIST = [
-    "Local folder indexing for PDF, DOCX, TXT, Markdown, HTML, JSON, CSV, YAML, and code files",
-    "Ollama-backed answer generation with FAISS retrieval",
-    "Retrieved source context with file path, page, and line metadata where available",
-    "Multilingual interface in English, Russian, Dutch, Chinese, and Hebrew",
-    "Separate answer-language control and response roles",
-    "Release checks and evaluation scripts for retrieval quality",
-]
-
-
-def _strip_query_and_fragment(raw_url: str) -> str:
-    parsed = urlsplit(raw_url)
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path or "/", "", ""))
-
-
-def _absolute_url(path_or_url: str, base_url: str | None = None) -> str:
-    value = str(path_or_url or "").strip()
-    if value.startswith(("http://", "https://")):
-        return _strip_query_and_fragment(value)
-    base = (base_url or SEO_PUBLIC_BASE_URL).rstrip("/")
-    path = value if value.startswith("/") else f"/{value}"
-    return _strip_query_and_fragment(f"{base}{path}")
-
-
-def is_seo_indexing_enabled() -> bool:
-    return bool(SEO_INDEX_APP)
-
-
-def get_seo_base_url() -> str:
-    return SEO_PUBLIC_BASE_URL.rstrip("/") or "https://localrag.dev"
-
-
-def build_seo_context(request: Request, lang: str, route: str = "/") -> dict[str, Any]:
-    locale = normalize_lang(lang)
-    locale_meta = SEO_LOCALE_META.get(locale, SEO_LOCALE_META[DEFAULT_LANG])
-    canonical_url = _absolute_url(route, get_seo_base_url())
-    open_graph_image = _absolute_url(static_url("logo.png"), get_seo_base_url())
-    robots = "index,follow" if is_seo_indexing_enabled() else "noindex,follow"
-    app_meta = get_app_meta()
-    schema = {
-        "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": APP_NAME,
-        "url": canonical_url,
-        "description": locale_meta["description"],
-        "applicationCategory": "DeveloperApplication",
-        "softwareVersion": app_meta["version"],
-        "operatingSystem": "Windows, Linux",
-        "inLanguage": locale_meta["html_lang"],
-        "image": open_graph_image,
-        "sameAs": [app_meta["github_url"]],
-        "featureList": SEO_APP_FEATURE_LIST,
-    }
-    return {
-        "locale": locale,
-        "html_lang": locale_meta["html_lang"],
-        "dir": "rtl" if locale == "he" else "ltr",
-        "route": route,
-        "canonical_url": canonical_url,
-        "alternate_urls": [],
-        "robots": robots,
-        "title": locale_meta["title"],
-        "description": locale_meta["description"],
-        "open_graph_type": "website",
-        "open_graph_title": locale_meta["title"],
-        "open_graph_description": locale_meta["description"],
-        "open_graph_url": canonical_url,
-        "open_graph_locale": locale_meta["og_locale"],
-        "open_graph_image": open_graph_image,
-        "twitter_card": "summary",
-        "schema": schema,
-        "claim_statuses": SEO_APP_CLAIM_STATUSES,
-        "last_verified_at": SEO_LAST_VERIFIED_AT,
-    }
-
-
-def build_robots_txt() -> str:
-    if not is_seo_indexing_enabled():
-        return "\n".join(
-            [
-                "User-agent: *",
-                "Disallow: /",
-                "",
-                (
-                    "# LocalRAG serves an interactive app UI; indexing is disabled by "
-                    "default. Set SEO_INDEX_APP=1 only for an intentionally public surface."
-                ),
-                "",
-            ]
-        )
-    return "\n".join(
-        [
-            "User-agent: *",
-            "Allow: /",
-            "Disallow: /api/",
-            "Disallow: /docs",
-            "Disallow: /redoc",
-            f"Sitemap: {_absolute_url('/sitemap.xml', get_seo_base_url())}",
-            "",
-        ]
-    )
-
-
-def build_sitemap_xml(request: Request) -> str:
-    url_entries: list[str] = []
-    if is_seo_indexing_enabled():
-        canonical_url = _absolute_url("/", get_seo_base_url())
-        loc = html.escape(canonical_url, quote=True)
-        lastmod = html.escape(SEO_LAST_VERIFIED_AT, quote=True)
-        url_entries.append(
-            "  <url>\n"
-            f"    <loc>{loc}</loc>\n"
-            f"    <lastmod>{lastmod}</lastmod>\n"
-            "    <changefreq>weekly</changefreq>\n"
-            "    <priority>0.6</priority>\n"
-            "  </url>"
-        )
-    body = "\n".join(url_entries)
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"{body}\n"
-        "</urlset>\n"
-    )
 
 
 def resolve_answer_language(raw_answer_language: str | None, ui_lang: str) -> str:
@@ -1566,23 +714,12 @@ def translate_model_manager_message(message_key: str, t_local, **params: Any) ->
     raw_text = str(message_key or "").strip()
     if not raw_text:
         return t_local("models_unavailable")
-    if "pull model manifest: file does not exist" in raw_text:
-        try:
-            return t_local("models_not_found_in_ollama").format(**params)
-        except Exception:
-            return t_local("models_not_found_in_ollama")
     if raw_text.startswith(t_local("error_prefix")):
         return raw_text
     return f"{t_local('error_prefix')}{raw_text}"
 
 
-def get_pull_status_label(
-    status: str,
-    t_local,
-    error: str = "",
-    *,
-    model: str = "",
-) -> str:
+def get_pull_status_label(status: str, t_local, error: str = "") -> str:
     normalized = str(status or "idle").strip().lower()
     mapping = {
         "idle": "models_pull_status_idle",
@@ -1594,11 +731,6 @@ def get_pull_status_label(
     }
     key = mapping.get(normalized, "models_pull_status_pulling")
     template = t_local(key)
-    if normalized == "error" and "pull model manifest: file does not exist" in str(error or ""):
-        try:
-            return t_local("models_not_found_in_ollama").format(model=model or "-")
-        except Exception:
-            return t_local("models_not_found_in_ollama")
     if "{error}" in template:
         return template.format(error=error or "-")
     return template
@@ -1717,8 +849,6 @@ def get_model_manager_i18n(t_local) -> dict[str, str]:
         "models_pull_active",
         "models_pull_completed",
         "models_delete_confirm",
-        "models_manual_hint",
-        "models_not_found_in_ollama",
     ]
     return {key: t_local(key) for key in keys}
 
@@ -1732,29 +862,7 @@ def get_settings_i18n(t_local) -> dict[str, str]:
         "settings_embedding_model_custom_placeholder",
         "settings_embedding_model_updated",
         "settings_embedding_model_invalid",
-        "settings_embedding_model_selected",
         "settings_embedding_runtime",
-        "settings_embedding_model_manager_hint",
-        "embedding_models_available",
-        "embedding_models_recommended",
-        "embedding_models_no_available",
-        "embedding_models_no_recommended",
-        "embedding_models_cached_badge",
-        "embedding_models_current_badge",
-        "embedding_models_local_path_badge",
-        "embedding_models_use_button",
-        "embedding_models_prepare_button",
-        "embedding_models_prepare_started",
-        "embedding_models_prepare_busy",
-        "embedding_models_prepare_status_idle",
-        "embedding_models_prepare_status_starting",
-        "embedding_models_prepare_status_loading",
-        "embedding_models_prepare_status_success",
-        "embedding_models_prepare_status_error",
-        "embedding_models_invalid_name",
-        "embedding_model_catalog_e5_large",
-        "embedding_model_catalog_bge_m3",
-        "embedding_model_catalog_gte_multilingual_base",
         "settings_tabs_label",
         "settings_tab_general",
         "settings_tab_models",
@@ -1822,96 +930,37 @@ def reset_model_pull_state() -> dict[str, Any]:
     )
 
 
-def get_embedding_model_pull_state() -> dict[str, Any]:
-    with _embedding_model_pull_lock:
-        return dict(_embedding_model_pull_state)
-
-
-def update_embedding_model_pull_state(**changes: Any) -> dict[str, Any]:
-    with _embedding_model_pull_lock:
-        _embedding_model_pull_state.update(changes)
-        return dict(_embedding_model_pull_state)
-
-
-def reset_embedding_model_pull_state() -> dict[str, Any]:
-    return update_embedding_model_pull_state(
-        active=False,
-        model="",
-        status="idle",
-        error="",
-        started_at=None,
-        finished_at=None,
-    )
-
-
 def fetch_ollama_model_inventory() -> list[dict[str, Any]]:
-    started = time.perf_counter()
-    outcome = "failure"
-    error_type = ""
-    try:
-        response = requests.get(
-            f"{OLLAMA_BASE_URL}/api/tags",
-            headers={CORRELATION_ID_HEADER: get_current_correlation_id()}
-            if get_current_correlation_id()
-            else None,
-            timeout=10,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        models = payload.get("models", [])
-        inventory: list[dict[str, Any]] = []
-        for raw_item in models:
-            if not isinstance(raw_item, dict):
-                continue
-            name = str(raw_item.get("name") or "").strip()
-            if not name:
-                continue
-            details = raw_item.get("details")
-            if not isinstance(details, dict):
-                details = {}
-            inventory.append(
-                {
-                    "name": name,
-                    "size": raw_item.get("size"),
-                    "modified_at": raw_item.get("modified_at"),
-                    "digest": raw_item.get("digest"),
-                    "details": {
-                        "family": details.get("family"),
-                        "families": details.get("families"),
-                        "parameter_size": details.get("parameter_size"),
-                        "quantization_level": details.get("quantization_level"),
-                        "format": details.get("format"),
-                    },
-                }
-            )
-        outcome = "success"
-        return inventory
-    except Exception as exc:  # noqa: BLE001
-        error_type = type(exc).__name__
-        raise
-    finally:
-        record_ollama_request(
-            "/api/tags",
-            outcome,
-            time.perf_counter() - started,
-            error_type=error_type,
-        )
-
-
-def get_recommended_embedding_models(t_local) -> list[dict[str, Any]]:
-    models: list[dict[str, Any]] = []
-    for item in RECOMMENDED_EMBEDDING_MODEL_CATALOG:
-        name = str(item.get("name") or "").strip()
+    response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=10)
+    response.raise_for_status()
+    payload = response.json()
+    models = payload.get("models", [])
+    inventory: list[dict[str, Any]] = []
+    for raw_item in models:
+        if not isinstance(raw_item, dict):
+            continue
+        name = str(raw_item.get("name") or "").strip()
         if not name:
             continue
-        models.append(
+        details = raw_item.get("details")
+        if not isinstance(details, dict):
+            details = {}
+        inventory.append(
             {
                 "name": name,
-                "summary": t_local(str(item.get("summary_key") or "")),
-                "available": is_embedding_model_available_locally(name),
+                "size": raw_item.get("size"),
+                "modified_at": raw_item.get("modified_at"),
+                "digest": raw_item.get("digest"),
+                "details": {
+                    "family": details.get("family"),
+                    "families": details.get("families"),
+                    "parameter_size": details.get("parameter_size"),
+                    "quantization_level": details.get("quantization_level"),
+                    "format": details.get("format"),
+                },
             }
         )
-    return models
+    return inventory
 
 
 def build_model_manager_payload(t_local) -> dict[str, Any]:
@@ -1923,7 +972,6 @@ def build_model_manager_payload(t_local) -> dict[str, Any]:
             str(pull_state.get("status") or ""),
             t_local,
             str(pull_state.get("error") or ""),
-            model=str(pull_state.get("model") or ""),
         )
         payload = {
             "ok": True,
@@ -1939,7 +987,6 @@ def build_model_manager_payload(t_local) -> dict[str, Any]:
             str(pull_state.get("status") or ""),
             t_local,
             str(pull_state.get("error") or ""),
-            model=str(pull_state.get("model") or ""),
         )
         payload = {
             "ok": False,
@@ -1952,78 +999,11 @@ def build_model_manager_payload(t_local) -> dict[str, Any]:
     return payload
 
 
-def translate_embedding_model_manager_message(
-    message_key: str, t_local, **params: Any
-) -> str:
-    mapping = {
-        "invalid_embedding_model_name": "embedding_models_invalid_name",
-        "prepare_busy": "embedding_models_prepare_busy",
-        "prepare_started": "embedding_models_prepare_started",
-    }
-    translation_key = mapping.get(message_key)
-    if translation_key:
-        try:
-            return t_local(translation_key).format(**params)
-        except Exception:
-            return t_local(translation_key)
-    raw_text = str(message_key or "").strip()
-    if not raw_text:
-        return t_local("embedding_models_invalid_name")
-    if raw_text.startswith(t_local("error_prefix")):
-        return raw_text
-    return f"{t_local('error_prefix')}{raw_text}"
-
-
-def get_embedding_pull_status_label(status: str, t_local, error: str = "") -> str:
-    normalized = str(status or "idle").strip().lower()
-    mapping = {
-        "idle": "embedding_models_prepare_status_idle",
-        "starting": "embedding_models_prepare_status_starting",
-        "loading": "embedding_models_prepare_status_loading",
-        "success": "embedding_models_prepare_status_success",
-        "completed": "embedding_models_prepare_status_success",
-        "error": "embedding_models_prepare_status_error",
-    }
-    key = mapping.get(normalized, "embedding_models_prepare_status_loading")
-    template = t_local(key)
-    if "{error}" in template:
-        return template.format(error=error or "-")
-    return template
-
-
-def build_embedding_model_manager_payload(t_local) -> dict[str, Any]:
-    pull_state = get_embedding_model_pull_state()
-    pull_state["label"] = get_embedding_pull_status_label(
-        str(pull_state.get("status") or ""),
-        t_local,
-        str(pull_state.get("error") or ""),
-    )
-    current_model = get_embedding_model_name()
-    available_models = list_available_embedding_models()
-    return {
-        "ok": True,
-        "current_model": current_model,
-        "default_model": get_default_embedding_model_name(),
-        "available": available_models,
-        "recommended": get_recommended_embedding_models(t_local),
-        "pull": pull_state,
-        "runtime": get_embedding_runtime_info(),
-    }
-
-
-def _pull_model_worker(model_name: str, correlation_id: str | None = None) -> None:
-    resolved_correlation_id = correlation_id or get_current_correlation_id()
-    token = CURRENT_CORRELATION_ID.set(resolved_correlation_id)
-    started = time.perf_counter()
-    outcome = "failure"
-    error_type = ""
+def _pull_model_worker(model_name: str) -> None:
     try:
         with requests.post(
             f"{OLLAMA_BASE_URL}/api/pull",
             json={"model": model_name, "stream": True},
-            headers={CORRELATION_ID_HEADER: resolved_correlation_id}
-            if resolved_correlation_id
-            else None,
             stream=True,
             timeout=(10, 1800),
         ) as response:
@@ -2038,29 +1018,6 @@ def _pull_model_worker(model_name: str, correlation_id: str | None = None) -> No
                     continue
                 if not isinstance(event, dict):
                     continue
-                if event.get("error"):
-                    update_model_pull_state(
-                        active=False,
-                        model=model_name,
-                        status="error",
-                        error=str(event.get("error") or ""),
-                        finished_at=datetime.now(timezone.utc).isoformat(),
-                    )
-                    METRICS.inc_counter(
-                        "localrag_model_pull_failures_total",
-                        base_metric_labels({"model_name": model_name}),
-                    )
-                    log_structured_event(
-                        "model_pull_completed",
-                        "model",
-                        "failure",
-                        severity="error",
-                        message="Ollama model pull failed",
-                        correlation_id=resolved_correlation_id,
-                        model_name=model_name,
-                        error_type="ollama_stream_error",
-                    )
-                    return
                 saw_updates = True
                 update_model_pull_state(
                     active=True,
@@ -2077,19 +1034,7 @@ def _pull_model_worker(model_name: str, correlation_id: str | None = None) -> No
                 status=final_status,
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
-            outcome = "success"
-            log_structured_event(
-                "model_pull_completed",
-                "model",
-                "success",
-                severity="info",
-                message="Ollama model pull completed",
-                correlation_id=resolved_correlation_id,
-                model_name=model_name,
-                duration_ms=int((time.perf_counter() - started) * 1000),
-            )
     except Exception as exc:  # noqa: BLE001
-        error_type = type(exc).__name__
         logging.error("Model pull failed for %s: %s", model_name, exc)
         update_model_pull_state(
             active=False,
@@ -2098,37 +1043,9 @@ def _pull_model_worker(model_name: str, correlation_id: str | None = None) -> No
             error=str(exc),
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
-        METRICS.inc_counter(
-            "localrag_model_pull_failures_total",
-            base_metric_labels({"model_name": model_name}),
-        )
-        log_structured_event(
-            "model_pull_completed",
-            "model",
-            "failure",
-            severity="error",
-            message="Ollama model pull failed",
-            correlation_id=resolved_correlation_id,
-            model_name=model_name,
-            duration_ms=int((time.perf_counter() - started) * 1000),
-            error_type=error_type,
-        )
-    finally:
-        record_ollama_request(
-            "/api/pull",
-            outcome,
-            time.perf_counter() - started,
-            model_name=model_name,
-            correlation_id=resolved_correlation_id,
-            error_type=error_type,
-        )
-        CURRENT_CORRELATION_ID.reset(token)
 
 
-def start_model_pull(
-    model_name: str,
-    correlation_id: str | None = None,
-) -> dict[str, Any]:
+def start_model_pull(model_name: str) -> dict[str, Any]:
     normalized = normalize_model_name(model_name)
     if not normalized:
         return {"ok": False, "message": "invalid_model_name"}
@@ -2154,123 +1071,10 @@ def start_model_pull(
         )
     threading.Thread(
         target=_pull_model_worker,
-        args=(normalized, correlation_id or get_current_correlation_id()),
+        args=(normalized,),
         daemon=True,
     ).start()
     return {"ok": True, "message": "pull_started", "model": normalized}
-
-
-def _prepare_embedding_model_worker(
-    model_name: str,
-    correlation_id: str | None = None,
-) -> None:
-    resolved_correlation_id = correlation_id or get_current_correlation_id()
-    token = CURRENT_CORRELATION_ID.set(resolved_correlation_id)
-    started = time.perf_counter()
-    try:
-        update_embedding_model_pull_state(
-            active=True,
-            model=model_name,
-            status="loading",
-            error="",
-        )
-        prepare_embedding_model_artifact(model_name)
-        update_embedding_model_pull_state(
-            active=False,
-            model=model_name,
-            status="success",
-            error="",
-            finished_at=datetime.now(timezone.utc).isoformat(),
-        )
-        log_structured_event(
-            "embedding_model_prepare_completed",
-            "model",
-            "success",
-            severity="info",
-            message="Embedding model preparation completed",
-            correlation_id=resolved_correlation_id,
-            embedding_model=model_name,
-            duration_ms=int((time.perf_counter() - started) * 1000),
-        )
-    except Exception as exc:  # noqa: BLE001
-        logging.error("Embedding model prepare failed for %s: %s", model_name, exc)
-        update_embedding_model_pull_state(
-            active=False,
-            model=model_name,
-            status="error",
-            error=str(exc),
-            finished_at=datetime.now(timezone.utc).isoformat(),
-        )
-        METRICS.inc_counter(
-            "localrag_embedding_prepare_failures_total",
-            base_metric_labels({"embedding_model": model_name}),
-        )
-        log_structured_event(
-            "embedding_model_prepare_completed",
-            "model",
-            "failure",
-            severity="error",
-            message="Embedding model preparation failed",
-            correlation_id=resolved_correlation_id,
-            embedding_model=model_name,
-            duration_ms=int((time.perf_counter() - started) * 1000),
-            error_type=type(exc).__name__,
-        )
-    finally:
-        CURRENT_CORRELATION_ID.reset(token)
-
-
-def start_embedding_model_pull(
-    model_name: str,
-    correlation_id: str | None = None,
-) -> dict[str, Any]:
-    normalized = normalize_embedding_model_name(model_name)
-    if not normalized:
-        return {"ok": False, "message": "invalid_embedding_model_name"}
-    with _embedding_model_pull_lock:
-        if _embedding_model_pull_state.get("active"):
-            current_model = str(_embedding_model_pull_state.get("model") or "")
-            return {
-                "ok": False,
-                "message": "prepare_busy",
-                "model": current_model,
-            }
-        _embedding_model_pull_state.update(
-            {
-                "active": True,
-                "model": normalized,
-                "status": "starting",
-                "error": "",
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "finished_at": None,
-            }
-        )
-    threading.Thread(
-        target=_prepare_embedding_model_worker,
-        args=(normalized, correlation_id or get_current_correlation_id()),
-        daemon=True,
-    ).start()
-    return {"ok": True, "message": "prepare_started", "model": normalized}
-
-
-def call_pull_starter_with_correlation(
-    starter,
-    model_name: str,
-    correlation_id: str,
-) -> dict[str, Any]:
-    try:
-        parameters = inspect.signature(starter).parameters.values()
-    except (TypeError, ValueError):
-        return starter(model_name, correlation_id=correlation_id)
-
-    supports_correlation = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        or parameter.name == "correlation_id"
-        for parameter in parameters
-    )
-    if supports_correlation:
-        return starter(model_name, correlation_id=correlation_id)
-    return starter(model_name)
 
 
 def delete_ollama_model(model_name: str) -> dict[str, Any]:
@@ -2280,37 +1084,16 @@ def delete_ollama_model(model_name: str) -> dict[str, Any]:
     pull_state = get_model_pull_state()
     if pull_state.get("active"):
         return {"ok": False, "message": "pull_busy", "model": pull_state.get("model")}
-    started = time.perf_counter()
-    outcome = "failure"
-    error_type = ""
     try:
         response = requests.delete(
             f"{OLLAMA_BASE_URL}/api/delete",
             json={"model": normalized},
-            headers={CORRELATION_ID_HEADER: get_current_correlation_id()}
-            if get_current_correlation_id()
-            else None,
             timeout=60,
         )
         response.raise_for_status()
     except Exception as exc:  # noqa: BLE001
-        error_type = type(exc).__name__
         logging.error("Failed to delete model %s: %s", normalized, exc)
-        record_ollama_request(
-            "/api/delete",
-            outcome,
-            time.perf_counter() - started,
-            model_name=normalized,
-            error_type=error_type,
-        )
         return {"ok": False, "message": str(exc)}
-    outcome = "success"
-    record_ollama_request(
-        "/api/delete",
-        outcome,
-        time.perf_counter() - started,
-        model_name=normalized,
-    )
     return {"ok": True, "message": "model_deleted", "model": normalized}
 
 
@@ -2519,7 +1302,6 @@ def index(
 ):
     translations = load_translations(lang)
     resolved_session_id = ensure_session_id(session_id)
-    seo = build_seo_context(request, lang, "/")
 
     def t_local(key: str):
         return translations.get(key, key)
@@ -2530,7 +1312,6 @@ def index(
         {
             "request": request,
             "lang": lang,
-            "seo": seo,
             "t": t_local,
             "index_status_code": get_index_status_meta()[0],
             "app_meta": get_app_meta(),
@@ -2538,11 +1319,7 @@ def index(
             "language_labels": get_language_labels(t_local),
             "role_image_catalog": get_role_image_catalog(t_local),
             "default_role_definitions": get_default_role_definitions(t_local),
-            "embedding_model_catalog": [
-                str(item.get("name") or "").strip()
-                for item in RECOMMENDED_EMBEDDING_MODEL_CATALOG
-                if str(item.get("name") or "").strip()
-            ],
+            "embedding_model_catalog": list(RECOMMENDED_EMBEDDING_MODEL_CATALOG),
             "server_profile": get_server_profile(),
             "settings_i18n": get_settings_i18n(t_local),
             "model_manager_i18n": get_model_manager_i18n(t_local),
@@ -2555,18 +1332,7 @@ def index(
         httponly=True,
         samesite="lax",
     )
-    response.headers["X-Robots-Tag"] = seo["robots"]
     return response
-
-
-@app.get("/robots.txt")
-def robots_txt():
-    return Response(build_robots_txt(), media_type="text/plain; charset=utf-8")
-
-
-@app.get("/sitemap.xml")
-def sitemap_xml(request: Request):
-    return Response(build_sitemap_xml(request), media_type="application/xml")
 
 
 @app.post("/api/ask", response_class=HTMLResponse)
@@ -2607,22 +1373,17 @@ async def api_ask(
     raw_topk = form.get("topk", str(DEFAULT_TOP_K))
     top_k: int | None = None
     started_at = datetime.now(timezone.utc)
-    started_perf = time.perf_counter()
-    log_structured_event(
-        "rag_query_started",
-        "rag",
-        "success",
-        severity="info",
-        message="RAG query started",
-        model_name=requested_model or "none",
-        embedding_model=get_embedding_model_name(),
-        role_id=role,
-        role_style=role_style,
-        lang=lang,
-        answer_language=answer_lang,
-        top_k_raw=raw_topk,
-        question_chars=len(question),
-        debug_mode=debug_mode,
+    user_ip = request.client.host if request.client else "unknown"
+    logging.info(
+        "Ask request from %s | ui_lang=%s | answer_lang=%s | model=%s | role=%s | style=%s | debug=%s | q='%s...'",
+        user_ip,
+        lang,
+        answer_lang,
+        requested_model,
+        role,
+        role_style,
+        debug_mode,
+        question[:40],
     )
 
     def elapsed_ms() -> int:
@@ -2763,64 +1524,6 @@ async def api_ask(
         status_code: str,
         retrieval_rows: list[dict[str, Any]] | None = None,
     ) -> HTMLResponse:
-        outcome_map = {
-            "ok": "success",
-            "validation_error": "validation_error",
-            "models_unavailable": "failure",
-            "invalid_model": "validation_error",
-            "no_documents": "failure",
-            "llm_error": "failure",
-            "exception": "failure",
-        }
-        outcome = outcome_map.get(status_code, "failure" if is_error else "success")
-        duration_seconds = time.perf_counter() - started_perf
-        context_chunks = count_context_chunks(ctx_text)
-        metric_model = model or requested_model or "none"
-        METRICS.inc_counter(
-            "localrag_rag_queries_total",
-            base_metric_labels(
-                {
-                    "outcome": outcome,
-                    "model_name": metric_model,
-                    "answer_language": answer_lang,
-                    "role_id": role,
-                }
-            ),
-        )
-        METRICS.observe_histogram(
-            "localrag_rag_query_duration_seconds",
-            duration_seconds,
-            base_metric_labels({"model_name": metric_model}),
-        )
-        if outcome == "success":
-            METRICS.observe_histogram(
-                "localrag_retrieval_context_chunks",
-                float(context_chunks),
-                base_metric_labels(),
-                buckets=CONTEXT_CHUNK_BUCKETS,
-            )
-        log_structured_event(
-            "rag_query_completed",
-            "rag",
-            outcome,
-            severity="error" if outcome == "failure" else "info",
-            message="RAG query completed",
-            model_name=metric_model,
-            embedding_model=get_embedding_model_name(),
-            top_k=top_k if top_k is not None else "",
-            role_id=role,
-            role_style=role_style,
-            lang=lang,
-            answer_language=answer_lang,
-            question_chars=len(question),
-            answer_chars=len(answer_text) if outcome == "success" else 0,
-            context_chunks=context_chunks,
-            index_status=get_index_status_meta()[0],
-            indexed_file_count=get_indexed_file_count(),
-            duration_ms=int(duration_seconds * 1000),
-            status_code=status_code,
-            debug_mode=debug_mode,
-        )
         return html_response(
             answer_fragment(answer_text, is_error=is_error)
             + context_fragment(ctx_text)
@@ -2832,6 +1535,7 @@ async def api_ask(
         if top_k < 1 or top_k > 50:
             raise ValueError
     except Exception:
+        logging.warning("Invalid top_k from %s: %s", user_ip, raw_topk)
         message = t_local("invalid_topk")
         if question:
             append_history_entry(
@@ -2848,6 +1552,7 @@ async def api_ask(
         return respond(message, "", is_error=True, status_code="validation_error")
 
     if not question:
+        logging.info("Empty question from %s", user_ip)
         return respond(
             t_local("empty_question"),
             "",
@@ -2857,6 +1562,7 @@ async def api_ask(
 
     available_models = get_ollama_models()
     if not available_models:
+        logging.error("No Ollama models available for %s", user_ip)
         message = f'{t_local("error_prefix")}{t_local("models_unavailable")}'
         append_history_entry(
             resolved_session_id,
@@ -2872,6 +1578,7 @@ async def api_ask(
         return respond(message, "", is_error=True, status_code="models_unavailable")
     model = resolve_model_for_request(requested_model, available_models, custom_role)
     if not model:
+        logging.warning("No resolved model for %s", user_ip)
         message = f'{t_local("error_prefix")}{t_local("models_unavailable")}'
         append_history_entry(
             resolved_session_id,
@@ -2906,6 +1613,7 @@ async def api_ask(
         raw_answer = answer if isinstance(answer, str) else str(answer)
         trimmed = raw_answer.strip()
         if trimmed == t_local("status_no_documents"):
+            logging.warning("No documents/index for %s", user_ip)
             message = t_local("status_no_documents")
             append_history_entry(
                 resolved_session_id,
@@ -2928,7 +1636,7 @@ async def api_ask(
         if trimmed.startswith("[Ollama request error") or trimmed.startswith(
             "[No response from LLM"
         ):
-            logging.error("LLM error in /api/ask")
+            logging.error("LLM error for %s: %s", user_ip, raw_answer)
             message = f'{t_local("error_prefix")}{raw_answer}'
             append_history_entry(
                 resolved_session_id,
@@ -2948,6 +1656,7 @@ async def api_ask(
                 status_code="llm_error",
                 retrieval_rows=retrieval_rows,
             )
+        logging.info("Answer OK for %s", user_ip)
         append_history_entry(
             resolved_session_id,
             question=question,
@@ -2967,7 +1676,7 @@ async def api_ask(
             retrieval_rows=retrieval_rows,
         )
     except Exception as exc:  # noqa: BLE001
-        logging.exception("Exception in /api/ask")
+        logging.exception("Exception in /api/ask for %s", user_ip)
         message = f'{t_local("error_prefix")}{exc}'
         append_history_entry(
             resolved_session_id,
@@ -3080,15 +1789,6 @@ def api_meta():
     return JSONResponse(get_app_meta())
 
 
-@app.get("/metrics", response_class=PlainTextResponse)
-def metrics():
-    refresh_runtime_metrics()
-    return PlainTextResponse(
-        METRICS.render_prometheus(),
-        media_type="text/plain; version=0.0.4; charset=utf-8",
-    )
-
-
 @app.get("/api/models", response_class=HTMLResponse)
 def api_models(lang: str = Cookie(DEFAULT_LANG)):
     translations = load_translations(lang)
@@ -3142,7 +1842,6 @@ def api_models_pull_status(lang: str = Cookie(DEFAULT_LANG)):
         str(pull_state.get("status") or ""),
         t_local,
         str(pull_state.get("error") or ""),
-        model=str(pull_state.get("model") or ""),
     )
     return JSONResponse({"ok": True, "pull": pull_state})
 
@@ -3158,21 +1857,6 @@ async def read_model_name_from_request(request: Request) -> str:
     return normalize_model_name(form.get("model"))
 
 
-async def read_embedding_model_name_from_request(request: Request) -> str:
-    try:
-        payload = await request.json()
-        if isinstance(payload, dict) and "embedding_model" in payload:
-            return normalize_embedding_model_name(payload.get("embedding_model"))
-        if isinstance(payload, dict) and "model" in payload:
-            return normalize_embedding_model_name(payload.get("model"))
-    except Exception:
-        pass
-    form = await request.form()
-    return normalize_embedding_model_name(
-        form.get("embedding_model") or form.get("model")
-    )
-
-
 @app.post("/api/models/pull", response_class=JSONResponse)
 async def api_models_pull(request: Request, lang: str = Cookie(DEFAULT_LANG)):
     translations = load_translations(lang)
@@ -3181,11 +1865,7 @@ async def api_models_pull(request: Request, lang: str = Cookie(DEFAULT_LANG)):
         return translations.get(key, key)
 
     model_name = await read_model_name_from_request(request)
-    result = call_pull_starter_with_correlation(
-        start_model_pull,
-        model_name,
-        get_current_correlation_id(),
-    )
+    result = start_model_pull(model_name)
     message = translate_model_manager_message(
         str(result.get("message") or ""),
         t_local,
@@ -3222,61 +1902,6 @@ async def api_models_delete(request: Request, lang: str = Cookie(DEFAULT_LANG)):
             "ok": bool(result.get("ok")),
             "message": message,
             "pull": build_model_manager_payload(t_local).get("pull", {}),
-        },
-        status_code=status_code,
-    )
-
-
-@app.get("/api/embedding-models/data", response_class=JSONResponse)
-def api_embedding_models_data(lang: str = Cookie(DEFAULT_LANG)):
-    translations = load_translations(lang)
-
-    def t_local(key: str):
-        return translations.get(key, key)
-
-    return JSONResponse(build_embedding_model_manager_payload(t_local))
-
-
-@app.get("/api/embedding-models/pull_status", response_class=JSONResponse)
-def api_embedding_models_pull_status(lang: str = Cookie(DEFAULT_LANG)):
-    translations = load_translations(lang)
-
-    def t_local(key: str):
-        return translations.get(key, key)
-
-    pull_state = get_embedding_model_pull_state()
-    pull_state["label"] = get_embedding_pull_status_label(
-        str(pull_state.get("status") or ""),
-        t_local,
-        str(pull_state.get("error") or ""),
-    )
-    return JSONResponse({"ok": True, "pull": pull_state})
-
-
-@app.post("/api/embedding-models/pull", response_class=JSONResponse)
-async def api_embedding_models_pull(request: Request, lang: str = Cookie(DEFAULT_LANG)):
-    translations = load_translations(lang)
-
-    def t_local(key: str):
-        return translations.get(key, key)
-
-    model_name = await read_embedding_model_name_from_request(request)
-    result = call_pull_starter_with_correlation(
-        start_embedding_model_pull,
-        model_name,
-        get_current_correlation_id(),
-    )
-    message = translate_embedding_model_manager_message(
-        str(result.get("message") or ""),
-        t_local,
-        model=result.get("model") or model_name or "-",
-    )
-    status_code = 200 if result.get("ok") else 400
-    return JSONResponse(
-        {
-            "ok": bool(result.get("ok")),
-            "message": message,
-            "pull": build_embedding_model_manager_payload(t_local).get("pull", {}),
         },
         status_code=status_code,
     )
@@ -3336,11 +1961,7 @@ def api_history_clear(
 
 @app.post("/api/reindex")
 def api_reindex(background_tasks: BackgroundTasks):
-    background_tasks.add_task(
-        run_reindex_job,
-        trigger="manual",
-        correlation_id=get_current_correlation_id(),
-    )
+    background_tasks.add_task(rebuild_index)
     return {"status": "reindex started"}
 
 
@@ -3383,11 +2004,7 @@ def api_docs_path(background_tasks: BackgroundTasks, payload: dict[str, Any] = B
         )
     result, changed = apply_runtime_settings_update({"docs_path": raw_path})
     if changed:
-        background_tasks.add_task(
-            run_reindex_job,
-            trigger="docs_path_change",
-            correlation_id=get_current_correlation_id(),
-        )
+        background_tasks.add_task(rebuild_index)
     return JSONResponse(
         {
             "ok": True,
@@ -3423,11 +2040,7 @@ def api_embedding_model(
             status_code=400,
         )
     if changed:
-        background_tasks.add_task(
-            run_reindex_job,
-            trigger="embedding_model_change",
-            correlation_id=get_current_correlation_id(),
-        )
+        background_tasks.add_task(rebuild_index)
     return JSONResponse(
         {
             "ok": True,
@@ -3469,11 +2082,7 @@ def api_runtime_config(
             status_code=400,
         )
     if changed:
-        background_tasks.add_task(
-            run_reindex_job,
-            trigger="runtime_config_change",
-            correlation_id=get_current_correlation_id(),
-        )
+        background_tasks.add_task(rebuild_index)
     message_parts: list[str] = []
     if result.get("docs_path"):
         message_parts.append(
@@ -3613,11 +2222,7 @@ async def api_lang_switch(request: Request):
                 "language_labels": get_language_labels(t_local),
                 "role_image_catalog": get_role_image_catalog(t_local),
             "default_role_definitions": get_default_role_definitions(t_local),
-            "embedding_model_catalog": [
-                str(item.get("name") or "").strip()
-                for item in RECOMMENDED_EMBEDDING_MODEL_CATALOG
-                if str(item.get("name") or "").strip()
-            ],
+            "embedding_model_catalog": list(RECOMMENDED_EMBEDDING_MODEL_CATALOG),
                 "server_profile": get_server_profile(),
                 "settings_i18n": get_settings_i18n(t_local),
                 "model_manager_i18n": get_model_manager_i18n(t_local),

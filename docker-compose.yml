@@ -61,13 +61,6 @@ services:
       timeout: 10s
       retries: 5
     environment:
-      - SERVICE_NAME=${SERVICE_NAME:-localrag}
-      - APP_ENV=${APP_ENV:-dev}
-      - APP_RELEASE=${APP_RELEASE:-0.9.0}
-      - APP_INSTANCE_ID=${APP_INSTANCE_ID:-localrag-dev}
-      - BUILD_DATE_UTC=${BUILD_DATE_UTC:-}
-      - SEO_PUBLIC_BASE_URL=${SEO_PUBLIC_BASE_URL:-https://localrag.dev}
-      - SEO_INDEX_APP=${SEO_INDEX_APP:-0}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - OLLAMA_BASE_URL=http://ollama:11434

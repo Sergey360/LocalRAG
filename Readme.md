@@ -135,12 +135,6 @@ This project reflects the engineering tradeoffs I care about:
 - `Pragmatic release discipline`: tests, smoke, eval, and quality gates all matter.
 - `Real-world retrieval quality`: mixed corpora and imperfect OCR are first-class constraints, not edge cases.
 
-## Project Profile
-
-The Stage 01 initiation profile, mono-repository topology confirmation, public
-delivery model, and local workspace target are recorded in
-[`docs/initiation.md`](docs/initiation.md).
-
 ## Highlights
 
 - Local Q&A over PDF, DOCX, TXT, Markdown, HTML, JSON, CSV, YAML, and source code files.
@@ -264,7 +258,6 @@ The development pipeline also includes a live quality-gate step for a running re
 - `GET /api/status` — index status
 - `GET /api/health` — liveness and readiness JSON
 - `GET /api/meta` — version and runtime metadata
-- `GET /metrics` — Prometheus text metrics for requests, RAG queries, index state, reindex jobs, and Ollama calls
 - `GET /api/models` — installed model list
 - `POST /api/reindex` — trigger reindex
 - `GET /docs` — Swagger UI
@@ -288,3 +281,5 @@ MIT
 Sergey360
 
 - GitHub: <https://github.com/Sergey360/LocalRAG>
+
+

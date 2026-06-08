@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -50,7 +49,6 @@ class CheckResult:
     ok: bool
     detail: str
     payload: dict[str, Any] | None = None
-    correlation_id: str = ""
 
 
 def append_result(
@@ -59,21 +57,8 @@ def append_result(
     ok: bool,
     detail: str,
     payload: dict[str, Any] | None = None,
-    correlation_id: str = "",
 ) -> None:
-    rows.append(
-        CheckResult(
-            name=name,
-            ok=ok,
-            detail=detail,
-            payload=payload,
-            correlation_id=correlation_id,
-        )
-    )
-
-
-def build_request_headers(check_name: str) -> dict[str, str]:
-    return {"X-Request-ID": f"release-check-{check_name}-{uuid.uuid4()}"}
+    rows.append(CheckResult(name=name, ok=ok, detail=detail, payload=payload))
 
 
 def main() -> int:
@@ -83,28 +68,12 @@ def main() -> int:
     rows: list[CheckResult] = []
     session = requests.Session()
 
-    health_headers = build_request_headers("health")
-    health_correlation_id = health_headers["X-Request-ID"]
     try:
-        health_resp = session.get(
-            f"{base_url}/api/health",
-            headers=health_headers,
-            timeout=30,
-        )
+        health_resp = session.get(f"{base_url}/api/health", timeout=30)
         health_resp.raise_for_status()
         health_payload = health_resp.json()
-        health_correlation_id = health_resp.headers.get(
-            "X-Request-ID",
-            health_correlation_id,
-        )
     except Exception as exc:  # noqa: BLE001
-        append_result(
-            rows,
-            "health",
-            False,
-            f"Health request failed: {exc}",
-            correlation_id=health_correlation_id,
-        )
+        append_result(rows, "health", False, f"Health request failed: {exc}")
         print_report(base_url, rows)
         return 1
 
@@ -114,28 +83,14 @@ def main() -> int:
         bool(health_payload.get("ok")),
         f"index.status={health_payload.get('index', {}).get('status')}",
         health_payload,
-        health_correlation_id,
     )
 
-    meta_headers = build_request_headers("meta")
-    meta_correlation_id = meta_headers["X-Request-ID"]
     try:
-        meta_resp = session.get(
-            f"{base_url}/api/meta",
-            headers=meta_headers,
-            timeout=30,
-        )
+        meta_resp = session.get(f"{base_url}/api/meta", timeout=30)
         meta_resp.raise_for_status()
         meta_payload = meta_resp.json()
-        meta_correlation_id = meta_resp.headers.get("X-Request-ID", meta_correlation_id)
     except Exception as exc:  # noqa: BLE001
-        append_result(
-            rows,
-            "meta",
-            False,
-            f"Meta request failed: {exc}",
-            correlation_id=meta_correlation_id,
-        )
+        append_result(rows, "meta", False, f"Meta request failed: {exc}")
         print_report(base_url, rows)
         return 1
 
@@ -153,7 +108,6 @@ def main() -> int:
             f"docs_path={meta_payload.get('docs_path')}"
         ),
         meta_payload,
-        meta_correlation_id,
     )
 
     ask_payload = {
@@ -164,26 +118,12 @@ def main() -> int:
         "answer_language": "ru",
         "response_role": "analyst",
     }
-    ask_headers = build_request_headers("ask")
-    ask_correlation_id = ask_headers["X-Request-ID"]
     try:
-        ask_resp = session.post(
-            f"{base_url}/api/ask",
-            data=ask_payload,
-            headers=ask_headers,
-            timeout=240,
-        )
+        ask_resp = session.post(f"{base_url}/api/ask", data=ask_payload, timeout=240)
         ask_resp.raise_for_status()
         ask_text = ask_resp.text
-        ask_correlation_id = ask_resp.headers.get("X-Request-ID", ask_correlation_id)
     except Exception as exc:  # noqa: BLE001
-        append_result(
-            rows,
-            "ask",
-            False,
-            f"Ask request failed: {exc}",
-            correlation_id=ask_correlation_id,
-        )
+        append_result(rows, "ask", False, f"Ask request failed: {exc}")
         print_report(base_url, rows)
         return 1
 
@@ -194,7 +134,6 @@ def main() -> int:
         ask_ok,
         f"answer contains '{args.answer_substring}': {ask_ok}",
         {"response_excerpt": ask_text[:800]},
-        ask_correlation_id,
     )
 
     print_report(base_url, rows)
@@ -205,15 +144,11 @@ def print_report(base_url: str, rows: list[CheckResult]) -> None:
     report = {
         "base_url": base_url,
         "ok": all(row.ok for row in rows),
-        "correlation_ids": [
-            row.correlation_id for row in rows if row.correlation_id
-        ],
         "checks": [
             {
                 "name": row.name,
                 "ok": row.ok,
                 "detail": row.detail,
-                "correlation_id": row.correlation_id,
                 "payload": row.payload,
             }
             for row in rows
